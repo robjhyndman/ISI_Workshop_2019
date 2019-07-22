@@ -1,0 +1,693 @@
+---
+title: "ETC3550 Applied&nbsp;forecasting&nbsp;for business&nbsp;and&nbsp;economics"
+author: "Ch2. Time series graphics"
+date: "OTexts.org/fpp3/"
+toc: true
+colortheme: monashwhite
+output:
+  binb::monash:
+    fig_width: 7
+    fig_height: 3.5
+    includes:
+      in_header: header.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+library(dplyr)
+library(ggplot2)
+library(fable)
+library(tsibble)
+library(feasts)
+library(lubridate)
+library(tsibbledata)
+options(width=50)
+```
+
+# Time series in R
+
+
+## Class packages
+\fontsize{13}{15}\sf
+
+```r
+# Data manipulation and plotting functions
+library(tidyverse)
+# Time series manipulation
+library(tsibble)
+# Forecasting functions
+library(fable)
+# Time series graphics and statistics
+library(feasts)
+# Tidy time series data
+library(tsibbledata)
+```
+
+## `tsibble` objects
+
+\fontsize{12}{13}\sf
+
+A `tsibble` allows storage and manipulation of time series in R.
+
+It contains:
+
+- Measured variable(s): numbers of interest
+- Key variable(s): unique identifiers for each series
+- An index: time information about the observation
+
+## `tsibble` objects
+
+### Example
+\fontsize{13}{15}\sf
+
+```{r tstable, cache=TRUE}
+library(tsibble)
+y <- tsibble(year = 2012:2016,
+  y = c(123,39,78,52,110), index = year)
+y
+```
+
+## The `tsibble` index
+
+Common time index variables can be created with these functions:
+
+```{r tstable2, echo=FALSE}
+tribble(
+  ~ `Frequency`, ~ Function,
+  "Annual", "start:end",
+  "Quarterly", "yearquarter()",
+  "Monthly", "yearmonth()",
+  "Weekly", "yearweek()",
+  "Daily", "as_date(), ymd()",
+  "Sub-daily", "as_datetime()"
+) %>%
+  knitr::kable(booktabs=TRUE)
+```
+
+## The `key` to many time series
+
+```{r tstablekey, echo=FALSE}
+tsibbledata::olympic_running %>%
+  group_by_key() %>%
+  slice(1) %>%
+  head(6) %>%
+  knitr::kable(booktabs=TRUE)
+```
+
+## The `key` to many time series
+
+```{r key-tsibble}
+olympic_running %>% as_tsibble(
+  key = id(Length, Sex), index = Year)
+```
+
+<!-- ## Seasonal periods -->
+
+<!-- \begin{tabular}{lrl} -->
+<!-- \bf Type of data & \hspace*{1.95cm}\bf frequency                 & \bf start example\hspace*{0.25cm} \\ -->
+<!-- \midrule -->
+<!-- Annual           & \only<2->{1}                                  & \only<3->{1995}\\ -->
+<!-- Quarterly        & \only<4->{4}                                  & \only<5->{c(1995,2)}\\ -->
+<!-- Monthly          & \only<6->{12}                                 & \only<7->{c(1995,9)}\\ -->
+<!-- Daily            & \only<8->{7 \emph{or} 365.25}                 & \only<9->{1 \emph{or} c(1995,234)} \\ -->
+<!-- Weekly           & \only<10->{52.18}                             & \only<11->{c(1995,23)}\\ -->
+<!-- Hourly           & \only<12->{24 \emph{or} 168 \emph{or} 8,766}  & \only<13->{1}\\ -->
+<!-- Half-hourly      & \only<14->{48 \emph{or} 336 \emph{or} 17,532} & \only<15>{1} -->
+<!-- \end{tabular} -->
+
+## Australian GDP
+
+\fontsize{12}{14}\sf
+
+```{r, echo = TRUE}
+aus_economy <- global_economy %>%
+  filter(Code == "AUS")
+```
+
+<!--   * Object: "tsibble" -->
+<!--   * Print and plotting methods available. -->
+
+```{r, echo=FALSE}
+aus_economy
+```
+
+## Australian GDP
+
+```{r, echo=TRUE, fig.height=4}
+aus_economy %>% autoplot(GDP)
+```
+
+# Time plots
+
+## Time plots
+
+\small
+
+```{r, echo=TRUE, fig.height=4}
+ansett %>%
+  filter(Airports=="MEL-SYD", Class=="Economy") %>%
+  autoplot(Passengers)
+```
+
+## Time plots
+
+```{r a10, echo = TRUE}
+a10 <- PBS %>%
+  filter(ATC2 == "A10") %>%
+  summarise(Cost = sum(Cost)/1e6)
+```
+```{r a10-print, echo = FALSE, dependson="a10"}
+a10
+```
+
+
+## Time plots
+
+\small
+
+```{r a10-plot, echo=TRUE, dependson="a10"}
+a10 %>% autoplot(Cost) +
+  ylab("$ million") + xlab("Year") +
+  ggtitle("Antidiabetic drug sales")
+```
+
+## Your turn
+
+- Create plots of the following time series: Bricks from `aus_production`, Lynx from `pelt`, Google from `gafa_stock`
+- Use `help()` to find out about the data in each series.
+- For the last plot, modify the axis labels and title.
+
+## Are time plots best?
+
+\fontsize{12}{14}\sf
+
+```{r maxtemp, echo=FALSE}
+maxtemp <- aus_elec %>%
+  filter(State=="Victoria") %>%
+  index_by(Day = lubridate::date(Time)) %>%
+  summarise(
+    Temperature = max(Temperature),
+    Demand = sum(Demand),
+    Holiday = any(Holiday)
+  )
+```
+
+```{r maxtemp1, warning=FALSE, message=FALSE, dependson="maxtemp"}
+maxtemp %>%
+  autoplot(Temperature) +
+  xlab("Week") + ylab("Max temperature")
+```
+
+## Are time plots best?
+
+\fontsize{12}{14}\sf
+
+```{r maxtemp2, warning=FALSE, message=FALSE, dependson="maxtemp"}
+maxtemp %>%
+  ggplot(aes(x = Day, y = Temperature)) +
+  geom_point() +
+  xlab("Week") + ylab("Max temperature")
+```
+
+## Are time plots best?
+
+```{r maxtemp3, warning=FALSE, message=FALSE, echo=FALSE, dependson="maxtemp"}
+maxtemp %>%
+  ggplot(aes(x = Day, y = 1)) +
+  geom_tile(aes(fill = Temperature)) +
+  scale_fill_gradient2(
+    low = "navy",
+    mid = "yellow",
+   high = "red", midpoint=28) +
+  ylab("") + scale_y_discrete(expand=c(0,0))
+```
+
+## Are time plots best?
+
+\fullheight{TemperatureBlanket}
+
+# Seasonal plots
+
+## Seasonal plots
+
+\footnotesize
+
+```{r, echo=TRUE, dependson="a10"}
+a10 %>% gg_season(Cost, labels = "both") +
+  ylab("$ million") +
+  ggtitle("Seasonal plot: antidiabetic drug sales")
+```
+
+## Seasonal plots
+
+  * Data plotted against the individual "seasons" in which the data were observed.  (In this case a "season" is a month.)
+  * Something like a time plot except that the data from each season are overlapped.
+  * Enables the underlying seasonal pattern to be seen more clearly, and also allows any substantial departures from the seasonal pattern to be easily identified.
+  * In R: `gg_season()`
+
+<!-- ## Seasonal polar plots -->
+
+<!-- \small -->
+
+<!-- ```{r, fig.height=6, out.width="7.5cm"} -->
+<!-- a10 %>% gg_season(polar = TRUE) + -->
+<!--   ylab("$ million") -->
+<!-- ``` -->
+
+## Seasonal subseries plots
+
+\small
+
+```{r, echo=TRUE, dependson="a10"}
+a10 %>%
+  gg_subseries(Cost) + ylab("$ million") +
+  ggtitle("Subseries plot: antidiabetic drug sales")
+```
+
+## Seasonal subseries plots
+
+  * Data for each season collected together in time plot as separate time series.
+  * Enables the underlying seasonal pattern to be seen clearly, and changes in seasonality over time to be visualized.
+  * In R: `gg_subseries()`
+
+## Quarterly Australian Beer Production
+\fontsize{13}{15}\sf
+
+```{r, fig.height=3}
+beer <- aus_production %>%
+  select(Quarter, Beer) %>%
+  filter(year(Quarter) >= 1992)
+beer %>% autoplot(Beer)
+```
+
+## Quarterly Australian Beer Production
+
+```{r}
+beer %>% gg_season(Beer, labels="right")
+```
+
+## Quarterly Australian Beer Production
+
+```{r}
+beer %>% gg_subseries(Beer)
+```
+
+## Your turn
+
+Look at the quarterly tourism data for the Snowy Mountains
+
+```r
+snowy <- filter(tourism,
+  Region == "Snowy Mountains",
+  Purpose == "Holiday")
+```
+
+  - Use `autoplot()`, `gg_season()` and `gg_subseries()` to explore the data.
+  - What do you learn?
+
+# Seasonal or cyclic?
+
+## Time series patterns
+
+Trend
+  : pattern exists when there is a long-term increase or decrease in the data.
+
+Seasonal
+  : pattern exists when a series is influenced by seasonal factors (e.g., the quarter of the year, the month, or day of the week).
+
+Cyclic
+  : pattern exists when data exhibit rises and falls that are \emph{not of fixed period} (duration usually of at least 2 years).
+
+## Time series components
+
+### Differences between seasonal and cyclic patterns:
+
+* seasonal pattern constant length; cyclic pattern variable length
+* average length of cycle longer than length of seasonal pattern
+* magnitude of cycle more variable than magnitude of seasonal pattern
+
+## Time series patterns
+\fontsize{13}{15}\sf
+
+```{r, fig.height=3}
+as_tsibble(fma::elec) %>%
+  filter(index >= 1980) %>%
+  autoplot(value) + xlab("Year") + ylab("GWh") +
+  ggtitle("Australian electricity production")
+```
+
+## Time series patterns
+\fontsize{13}{15}\sf
+
+```{r, warning=FALSE, fig.height=3}
+aus_production %>%
+  autoplot(Bricks) +
+  ggtitle("Australian clay brick production") +
+  xlab("Year") + ylab("million units")
+```
+
+## Time series patterns
+\fontsize{13}{15}\sf
+
+```{r, fig.height=3}
+as_tsibble(fma::hsales) %>%
+  autoplot(value) +
+  ggtitle("Sales of new one-family houses, USA") +
+  xlab("Year") + ylab("Total sales")
+```
+
+## Time series patterns
+\fontsize{13}{15}\sf
+
+```{r, fig.height=3}
+as_tsibble(fma::ustreas) %>%
+  autoplot(value) +
+  ggtitle("US Treasury Bill Contracts") +
+  xlab("Day") + ylab("price")
+```
+
+## Time series patterns
+\fontsize{13}{15}\sf
+
+```{r, fig.height=3}
+pelt %>%
+  autoplot(Lynx) +
+  ggtitle("Annual Canadian Lynx Trappings") +
+  xlab("Year") + ylab("Number trapped")
+```
+
+## Seasonal or cyclic?
+
+\alert{Differences between seasonal and cyclic patterns:}
+
+  * seasonal pattern constant length; cyclic pattern variable length
+  * average length of cycle longer than length of seasonal pattern
+  * magnitude of cycle more variable than magnitude of seasonal pattern
+
+\pause
+
+\begin{alertblock}{}
+The timing of peaks and troughs is predictable with seasonal data, but unpredictable in the long term with cyclic data.
+\end{alertblock}
+
+# Lag plots and autocorrelation
+
+## Example: Beer production
+\fontsize{13}{15}\sf
+
+```{r}
+new_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+new_production
+```
+
+## Example: Beer production
+\fontsize{13}{15}\sf
+
+```{r, fig.height=6.5, fig.width=6.5, out.width="8cm"}
+new_production %>% gg_lag(Beer)
+```
+
+## Example: Beer production
+\fontsize{13}{15}\sf
+
+```{r, fig.height=6.5, fig.width=6.5, out.width="8cm"}
+new_production %>% gg_lag(Beer, geom='point')
+```
+
+
+## Lagged scatterplots
+
+  * Each graph shows $y_t$ plotted against $y_{t-k}$ for
+different values of $k$.
+  * The autocorrelations are the correlations associated
+with these scatterplots.
+
+## Autocorrelation
+
+**Covariance** and **correlation**: measure extent of **linear relationship** between two variables ($y$ and $X$).\pause
+
+**Autocovariance** and **autocorrelation**: measure linear relationship between **lagged values** of a time series $y$.\pause
+
+We measure the relationship between:
+
+  * $y_{t}$ and $y_{t-1}$
+  * $y_{t}$ and $y_{t-2}$
+  * $y_{t}$ and $y_{t-3}$
+  * etc.
+
+## Autocorrelation
+
+We denote the sample autocovariance at lag $k$ by $c_k$ and the sample autocorrelation at lag $k$ by $r_k$.  Then define
+
+\begin{block}{}
+\begin{align*}
+c_k &= \frac{1}{T}\sum_{t=k+1}^T (y_t-\bar{y})(y_{t-k}-\bar{y}) \\[0.cm]
+\text{and}\qquad
+r_{k} &= c_k/c_0
+\end{align*}
+\end{block}\pause\small
+
+  * $r_1$ indicates how successive values of  $y$  relate to each other
+  * $r_2$ indicates how  $y$ values two periods apart relate to each other
+  * $r_k$ is \textit{almost} the same as the sample correlation between $y_t$ and $y_{t-k}$.
+
+## Autocorrelation
+
+
+Results for first 9 lags for beer data:
+
+\fontsize{11}{13}\sf
+
+```{r, echo=TRUE}
+new_production %>% ACF(Beer, lag_max = 9)
+```
+
+## Autocorrelation
+
+Results for first 9 lags for beer data:
+
+\fontsize{11}{13}\sf
+
+```{r beeracf, fig.height=2.5}
+new_production %>% ACF(Beer, lag_max = 9) %>% autoplot()
+```
+
+\vspace*{10cm}
+
+## Autocorrelation
+
+  * $r_{4}$  higher than for the other lags. This is due to **the seasonal pattern in the data**: the peaks tend to be **4 quarters** apart and the troughs tend to be **2 quarters** apart.
+  * $r_2$ is more negative than for the other lags because troughs tend to be 2 quarters behind peaks.
+  * Together, the autocorrelations at lags 1, 2, \dots, make up the \emph{autocorrelation} or ACF.
+  * The plot is known as a **correlogram**
+
+## ACF
+
+```{r, fig.height=4, echo=TRUE}
+new_production %>% ACF(Beer) %>% autoplot()
+```
+
+## Trend and seasonality in ACF plots
+
+- When data have a trend, the autocorrelations for small lags tend to be large and positive.
+- When data are seasonal, the autocorrelations will be larger at the seasonal lags (i.e., at multiples of the seasonal frequency)
+- When data are trended and seasonal, you see a combination of these effects.
+
+## Aus monthly electricity production
+
+```{r}
+elec2 <- as_tsibble(fma::elec) %>%
+  filter(year(index) >= 1980)
+elec2 %>% autoplot(value)
+```
+
+## Aus monthly electricity production
+
+```{r}
+elec2 %>% ACF(value, lag_max=48) %>%
+  autoplot()
+```
+
+## Aus monthly electricity production
+
+Time plot shows clear trend and seasonality.
+
+The same features are reflected in the ACF.
+
+  * The slowly decaying ACF indicates trend.
+  * The ACF peaks at lags 12, 24, 36, \dots, indicate seasonality of length 12.
+
+## Google stock price
+\fontsize{12}{14}\sf
+
+```{r google-2015}
+google_2015 <- gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) == 2015) %>%
+  select(Date, Close)
+google_2015
+```
+
+## Google stock price
+
+```{r}
+google_2015 %>% autoplot(Close)
+```
+
+## Google stock price
+\fontsize{12}{16}\sf
+
+```r
+google_2015 %>%
+  ACF(Close, lag_max=100)
+# Error: Can't handle tsibble of irregular interval.
+```
+
+\pause
+
+```{r}
+google_2015
+```
+
+## Google stock price
+\fontsize{12}{14}\sf
+
+```{r}
+google_2015 <- google_2015 %>%
+  mutate(trading_day = row_number()) %>%
+  update_tsibble(index=trading_day, regular=TRUE)
+google_2015
+```
+
+## Google stock price
+
+```{r}
+google_2015 %>%
+  ACF(Close, lag_max=100) %>%
+  autoplot()
+```
+
+## Your turn
+
+We have introduced the following functions:
+
+  - `gg_lag`
+  - `ACF`
+
+Explore the following time series using these functions. Can you spot any seasonality, cyclicity and trend? What do you learn about the series?
+
+  - Bricks from `aus_production`
+  - Lynx from `pelt`
+  - Victorian Electricity Demand from `aus_elec`
+
+## Which is which?
+
+```{r, fig.height=6, fig.width=12, echo=FALSE, warning=FALSE, out.width="11.5cm"}
+cowtemp <- as_tsibble(fma::cowtemp)
+USAccDeaths <- as_tsibble(USAccDeaths)
+AirPassengers <- as_tsibble(AirPassengers)
+mink <- as_tsibble(fma::mink)
+tp1 <- autoplot(cowtemp, value) + xlab("") + ylab("chirps per minute") +
+  ggtitle("1. Daily temperature of cow")
+tp2 <- autoplot(USAccDeaths, value) + xlab("") + ylab("thousands") +
+  ggtitle("2. Monthly accidental deaths")
+tp3 <- autoplot(AirPassengers, value) + xlab("") + ylab("thousands") +
+  ggtitle("3. Monthly air passengers")
+tp4 <- autoplot(mink, value) + xlab("") + ylab("thousands") +
+  ggtitle("4. Annual mink trappings")
+acfb <- ACF(cowtemp, value) %>% autoplot() + xlab("") + ggtitle("B") + ylim(-0.4,1)
+acfa <- ACF(USAccDeaths, value) %>% autoplot() + xlab("") + ggtitle("A") + ylim(-0.4,1)
+acfd <- ACF(AirPassengers, value) %>% autoplot() + xlab("") + ggtitle("D") + ylim(-0.4,1)
+acfc <- ACF(mink, value) %>% autoplot() + xlab("") + ggtitle("C") + ylim(-0.4,1)
+gridExtra::grid.arrange(tp1,tp2,tp3,tp4,
+                        acfa,acfb,acfc,acfd,nrow=2)
+```
+
+# White noise
+
+## Example: White noise
+\fontsize{13}{15}\sf
+
+```{r}
+wn <- tsibble(t = seq_len(36), y = rnorm(36),
+              index = t)
+wn %>% autoplot(y)
+```
+
+## Example: White noise
+\fontsize{10}{15}\sf\tabcolsep=0.1cm
+
+```{r, echo=FALSE}
+wn %>% ACF(y, lag_max = 10) %>%
+  as_tibble() %>%
+  tidyr::spread(lag, acf) %>%
+  rename_all(function(x){paste("$r_{",x,"}$",sep="")}) %>%
+  knitr::kable(booktabs=TRUE,
+               escape=FALSE, align="c", digits=3,
+               format.args=list(nsmall=3))
+```
+
+```{r, echo=FALSE}
+wn %>% ACF(y) %>% autoplot()
+```
+
+## \large Sampling distribution of autocorrelations
+
+Sampling distribution of $r_k$ for white noise data is asymptotically N(0,$1/T$).\pause
+
+  *  95% of all $r_k$ for white noise must lie within $\pm 1.96/\sqrt{T}$.
+  * If this is not the case, the series is probably not WN.
+  * Common to plot lines at $\pm 1.96/\sqrt{T}$ when plotting ACF.
+These are the \alert{critical values}.
+
+## Example: Pigs slaughtered
+
+\fontsize{12}{13}\sf
+
+```{r, fig.height=3}
+pigs <- aus_livestock %>%
+  filter(State == "Victoria", Animal == "Pigs",
+         year(Month) >= 2014)
+pigs %>% autoplot(Count/1e3) +
+  xlab("Year") + ylab("Thousands") +
+  ggtitle("Number of pigs slaughtered in Victoria")
+```
+
+## Example: Pigs slaughtered
+
+```{r}
+pigs %>% ACF(Count) %>% autoplot()
+```
+
+## Example: Pigs slaughtered
+
+Monthly total number of pigs slaughtered
+in the state of Victoria, Australia, from January 2014 through December 2018
+(Source: Australian Bureau of Statistics.)\pause
+
+  * Difficult to detect pattern in time plot.
+  * ACF shows significant autocorrelation for lag 2 and 12.
+  * Indicate some slight seasonality.
+
+\pause
+
+These show the series is **not a white noise series**.
+
+## Your turn
+
+You can compute the daily changes in the Google stock price in 2018 using
+
+\fontsize{11.5}{15}\sf
+
+
+```{r, eval = FALSE}
+dgoog <- gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) >= 2018) %>%
+  mutate(trading_day = row_number()) %>%
+  update_tsibble(index=trading_day, regular=TRUE) %>%
+  mutate(diff = difference(Close))
+```
+
+\fontsize{14}{16}\sf
+
+Does `diff` look like white noise?
