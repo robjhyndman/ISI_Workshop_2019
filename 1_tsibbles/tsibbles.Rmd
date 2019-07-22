@@ -13,9 +13,12 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE,
+  dev.args = list(pointsize = 11)
+)
+options(digits = 3, width = 60)
 library(fpp3)
-
 global_economy <- global_economy %>%
   select(Year, Country, GDP, Imports, Exports, Population)
 tourism <- tourism %>%
@@ -33,7 +36,7 @@ tourism <- tourism %>%
   )
 ```
 
-# Time series data
+# Time series data and tsibbles
 
 ## Tidyverts packages
 
@@ -59,7 +62,7 @@ tourism <- tourism %>%
   - Time-stamped stock transaction data
 
 ## Class packages
-\fontsize{13}{15}\sf
+\fontsize{13}{14}\sf
 
 ```r
 # Data manipulation and plotting functions
@@ -72,6 +75,13 @@ library(fable)
 library(feasts)
 # Tidy time series data
 library(tsibbledata)
+```
+
+\pause
+
+```r
+# Almost all of the above
+library(fpp3)
 ```
 
 ## `tsibble` objects
@@ -118,18 +128,20 @@ tourism
 
 ## `tsibble` objects
 
-A `tsibble` allows storage and manipulation of time series in R.
+* A `tsibble` allows storage and manipulation of time series in R.
 
-It contains:
+* It contains:
 
-- Measured variable(s): numbers of interest
-- An index: time information about the observation
-- Key variable(s): optional unique identifiers for each series
+  + Measured variable(s): numbers of interest
+  + An index: time information about the observation
+  + Key variable(s): optional unique identifiers for each series
+
+* It works with tidyverse functions.
 
 ## The `tsibble` index
 
 ### Example
-\fontsize{13}{15}\sf
+\fontsize{12}{13}\sf
 
 ```{r tstable, cache=TRUE}
 library(tsibble)
@@ -143,6 +155,8 @@ y
 \begin{block}{}
 For observations more frequent than once per year, we need to use a time class function on the index.
 \end{block}
+\fontsize{12}{13}\sf
+
 
 ```{r tstablemonth, echo=FALSE}
 z <- tibble(Month = paste(2019, month.abb[1:5]), Observation = c(50, 23, 34, 30, 25))
@@ -158,6 +172,7 @@ z
 \begin{block}{}
 For observations more frequent than once per year, we need to use a time class function on the index.
 \end{block}
+\fontsize{12}{13}\sf
 
 ```{r month-tsibble}
 z %>%
@@ -183,46 +198,74 @@ tribble(
   knitr::kable(booktabs=TRUE)
 ```
 
+# Working with `tsibble` objects
 
-## The `key` to many time series
+## Australian Pharmaceutical Benefits Scheme
 
-```{r tstablekey}
-olympic_running
+\full{pills}
 
-tsibbledata::olympic_running %>%
-  group_by_key() %>%
-  slice(1) %>%
-  head(6) %>%
-  knitr::kable(booktabs=TRUE)
+## Australian Pharmaceutical Benefits Scheme
+\begin{block}{}
+The \alert{Pharmaceutical Benefits Scheme} (PBS) is the Australian government drugs subsidy scheme.
+\end{block}
+\pause\fontsize{13.3}{15}\sf
+
+  * Many drugs bought from pharmacies are subsidised to allow more equitable access to modern drugs.
+  * The cost to government is determined by the number and types of drugs purchased. Currently nearly 1\% of GDP.
+  * The total cost is budgeted based on forecasts of drug usage.
+  * Costs are disaggregated by drug type (ATC1 x`r length(unique(PBS$ATC1))` / ATC2 `r length(unique(PBS$ATC2))`), concession category (x`r length(unique(PBS$Concession))`) and patient type (x`r length(unique(PBS$Type))`), giving $84\times2\times2=`r 84*2*2`$ time series.
+
+## Working with `tsibble` objects {-}
+\fontsize{8}{10}\sf
+
+```{r wide, include=FALSE}
+options(width=78)
 ```
 
-## The `key` to many time series
-
-```{r key-tsibble}
-olympic_running %>% as_tsibble(
-  key = id(Length, Sex), index = Year)
-```
-
-
-
-### Working with `tsibble` objects {-}
-
-We have used several functions above in order to work with `tsibble` objects, including `mutate()` and `select()`. To illustrate these further, along with some other useful functions, we will use the `PBS` tsibble containing sales data on pharmaceutical products in Australia.
-
-```{r pbs1}
+```{r pbs1, dependson='wide'}
 PBS
 ```
 
-This contains monthly data on Medicare Australia prescription data from July 1991 to June 2008. These are classified according to various concession types, and Anatomical Therapeutic Chemical (ATC) indexes. For this example, we are interested in the `Cost` time series (total cost of scripts in Australian dollars).
 
-We can use the `filter()` function to extract the A10 scripts:
+## Working with `tsibble` objects {-}
+\fontsize{12}{14}\sf
+
+We can use the `filter()` function to select rows.
+
+\fontsize{8}{10}\sf
 
 ```{r pbs2}
 PBS %>%
   filter(ATC2=="A10")
 ```
 
-This allows rows of the tsibble to be selected. Next we can simplify the resulting object by selecting the columns we will need in subsequent analysis.
+## Working with `tsibble` objects {-}
+\fontsize{12}{14}\sf
+
+We can use the `select()` function to select columns.
+
+\fontsize{8}{10}\sf
+
+```r
+PBS %>%
+  filter(ATC2=="A10") %>%
+  select(Cost)
+```
+
+```
+Selecting index: "Month"
+Error: The result is not a valid tsibble.
+Do you need `as_tibble()` to work with data frame?
+```
+
+\vspace*{10cm}
+
+## Working with `tsibble` objects {-}
+\fontsize{12}{14}\sf
+
+We can use the `select()` function to select columns.
+
+\fontsize{8}{10}\sf
 
 ```{r pbs3}
 PBS %>%
@@ -230,11 +273,12 @@ PBS %>%
   select(Month, Concession, Type, Cost)
 ```
 
-The `select()` function allows us to select particular columns, while `filter()` allows us to select particular rows.
+## Working with `tsibble` objects {-}
+\fontsize{12}{14}\sf
 
-Note that the index variable `Month` would be returned even if it was not explicitly selected as it is required for a tsibble. If we had not selected the `Concession` and `Type` columns, an error would have occurred because the resulting tsibble would be invalid as there would be duplicate rows for each month.
+We can use the `summarise()` function to summarise over keys.
 
-Another useful function is `summarise()` which allows us to combine data across keys. For example, we may wish to compute total cost per month regardless of the `Concession` or `Type` keys.
+\fontsize{8}{10}\sf
 
 ```{r pbs4}
 PBS %>%
@@ -243,9 +287,12 @@ PBS %>%
   summarise(TotalC = sum(Cost))
 ```
 
-The new variable `TotalC` is the sum of all `Cost` values for each month.
+## Working with `tsibble` objects {-}
+\fontsize{12}{14}\sf
 
-We can create new variables using the `mutate()` function. Here we change the units from dollars to millions of dollars:
+We can use the `mutate()` function to create new variables.
+
+\fontsize{8}{10}\sf
 
 ```{r pbs5}
 PBS %>%
@@ -255,9 +302,14 @@ PBS %>%
   mutate(Cost = TotalC/1e6)
 ```
 
-Finally, we will save the resulting tsibble for examples later in this chapter.
+## Working with `tsibble` objects {-}
+\fontsize{12}{14}\sf
 
-```{r a10}
+We can use the `mutate()` function to create new variables.
+
+\fontsize{8}{10}\sf
+
+```{r pbs6}
 PBS %>%
   filter(ATC2=="A10") %>%
   select(Month, Concession, Type, Cost) %>%
@@ -265,18 +317,24 @@ PBS %>%
   mutate(Cost = TotalC/1e6) -> a10
 ```
 
-Here we have used the right assignment (`->`) which is convenient at the end of a series of commands like this.
+```{r a10, echo=FALSE}
+a10
+```
 
-### Read a csv file and convert to a tsibble {-}
+```{r narrow, include=FALSE}
+options(width=60)
+```
 
-Almost all of the data used in this book is already stored as `tsibble` objects. But most data lives in databases, MS-Excel files or csv files, before it is imported into R. So often the first step in creating a tsibble is to read in the data, and then identify the index and key variables.
+# Create a tsibble from a csv
 
-For example, suppose we have the following daily data stored in a csv file (only the first 10 rows are shown). This data set provides information on the size of the prison population in Australia, disaggregated by state, gender, legal status and indigenous status. (Here, ATSI stands for Aboriginal or Torres Strait Islander.)
+## Create a tsibble from a csv
+\fontsize{13}{14}\sf
+
 
 ```{r prison, echo=FALSE, warning=FALSE, message=FALSE}
 prison <- readr::read_csv("../data/prison_population.csv")
 prison %>%
-  head(10) %>%
+  head(15) %>%
   knitr::kable(booktabs=TRUE)
 prison <- prison %>%
   mutate(Quarter = yearquarter(date)) %>%
@@ -284,22 +342,20 @@ prison <- prison %>%
   as_tsibble(index=Quarter, key=c(state, gender, legal, indigenous))
 ```
 
-We can read it into R, and create a tsibble object, by simply identifying which column contains the time index, and which columns are keys. The remaining columns are values --- there can be many value columns, although in this case there is only one (`count`). The original csv file stored the dates as individual days, although the data is actually quarterly, so we need to convert the `date` variable to quarters.
+## Read a csv file and convert to a tsibble {-}
+\fontsize{10}{11}\sf
 
 ```{r prison2, echo=TRUE, eval=FALSE}
-prison <- readr::read_csv("https://otexts.com/fpp3/extrafiles/prison_population.csv") %>%
+prison <- readr::read_csv("prison_population.csv") %>%
   mutate(Quarter = yearquarter(date)) %>%
   select(-date) %>%
-  as_tsibble(index=Quarter, key=c(state, gender, legal, indigenous))
+  as_tsibble(index=Quarter,
+    key=c(state, gender, legal, indigenous))
 ```
 
 ```{r prison3, dependson=prison}
 prison
 ```
-
-This tsibble contains 64 separate time series corresponding to the combinations of the 8 states, 2 genders, 2 legal statuses and 2 indigenous statuses. Each of these series is `r NROW(prison)/64` observations in length, from `r head(prison,1)$Quarter` to `r tail(prison,1)$Quarter`.
-
-For a tsibble to be valid, it requires a unique time for each combination of keys. The `tsibble()` or `as_tsibble()` function will return an error if this is not true.
 
 ### The seasonal period {-}
 <!-- TODO: Also detail problematic periods (months in daily data). -->
@@ -337,54 +393,48 @@ If the data is observed more than once per week, then there is often more than o
 
 More complicated (and unusual) seasonal patterns can be specified using the `period()` function in the lubridate package.
 
-
-
-## Australian GDP
-
-\fontsize{12}{14}\sf
-
-```{r, echo = TRUE}
-aus_economy <- global_economy %>%
-  filter(Country == "Australia")
-```
-
-```{r, echo=FALSE}
-aus_economy
-```
-
-## Australian GDP
-
-```{r, echo=TRUE, fig.height=4}
-aus_economy %>% autoplot(GDP)
-```
-
 # Time plots
 
 ## Time plots
 
-\small
-
-```{r, echo=TRUE, fig.height=4}
-ansett %>%
-  filter(Airports=="MEL-SYD", Class=="Economy") %>%
-  autoplot(Passengers)
-```
-
-## Time plots
-
-```{r a10-print, echo = FALSE, dependson="a10"}
+```{r a10-print, echo = TRUE, dependson="a10"}
 a10
 ```
-
 
 ## Time plots
 
 \small
 
 ```{r a10-plot, echo=TRUE, dependson="a10"}
+a10 %>% autoplot(Cost)
+```
+
+## Time plots
+
+\small
+
+```{r a10-plot2, echo=TRUE, dependson="a10"}
 a10 %>% autoplot(Cost) +
   ylab("$ million") + xlab("Year") +
   ggtitle("Antidiabetic drug sales")
+```
+
+## Time plots
+
+\small
+
+```{r, echo=TRUE,}
+ansett
+```
+
+## Time plots
+
+\small
+
+```{r, echo=TRUE,}
+ansett %>%
+  filter(Airports=="MEL-SYD", Class=="Economy") %>%
+  autoplot(Passengers)
 ```
 
 ## Your turn
@@ -439,5 +489,5 @@ maxtemp %>%
 
 ## Are time plots best?
 
-\fullheight{TemperatureBlanket}
+\full{TemperatureBlanket}
 
