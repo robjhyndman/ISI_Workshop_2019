@@ -228,6 +228,40 @@ maxtemp %>%
 
 # Seasonal plots
 
+## The seasonal period {-}
+\fontsize{13}{14}\sf
+
+ * Seasonal period = no. observations before seasonal pattern repeats.
+ * Usually automatically detected using time index.
+ * Daily & sub-daily time series can have multiple \rlap{periods.}
+
+###
+\vspace*{-0.4cm}
+
+```{r freqtable, echo=FALSE, message=FALSE}
+  intervals <- list(
+  Quarters = tsibble::new_interval(quarter = 1),
+  Months = tsibble::new_interval(month = 1),
+  Weeks = tsibble::new_interval(week = 1),
+  Days = tsibble::new_interval(day = 1),
+  Hours = tsibble::new_interval(hour = 1),
+  Minutes = tsibble::new_interval(minute = 1),
+  Seconds = tsibble::new_interval(second = 1)
+)
+
+intervals %>%
+  purrr::map(common_periods) %>%
+  purrr::map(as.list) %>%
+  purrr::map_dfr(as_tibble, .id = "Data") %>%
+  purrr::set_names(., stringr::str_to_sentence(colnames(.))) %>%
+  select(Data, Minute, Hour, Day, Week, Year) %>%
+  mutate_all(format, scientific = FALSE, nsmall = 2) %>%
+  mutate_all(~ gsub(".00", "", ., fixed = TRUE)) %>%
+  mutate_all(~ gsub("   NA", "", ., fixed=TRUE)) %>%
+  knitr::kable(booktabs=TRUE)
+```
+
+
 ## Seasonal plots
 
 \footnotesize
