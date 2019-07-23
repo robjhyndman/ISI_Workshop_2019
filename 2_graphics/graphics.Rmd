@@ -1,189 +1,82 @@
 ---
-title: "ETC3550 Applied&nbsp;forecasting&nbsp;for business&nbsp;and&nbsp;economics"
-author: "Ch2. Time series graphics"
-date: "OTexts.org/fpp3/"
+title: "High dimensional time series analysis"
+date: "robjhyndman.com/hdtsa"
+author: "2. Time series graphics"
 toc: true
-colortheme: monashwhite
 output:
   binb::monash:
+    colortheme: monashwhite
     fig_width: 7
     fig_height: 3.5
     includes:
-      in_header: header.tex
+      in_header: ../header.tex
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
-library(dplyr)
-library(ggplot2)
-library(fable)
-library(tsibble)
-library(feasts)
-library(lubridate)
-library(tsibbledata)
-options(width=50)
-```
-
-# Time series in R
-
-
-## Class packages
-\fontsize{13}{15}\sf
-
-```r
-# Data manipulation and plotting functions
-library(tidyverse)
-# Time series manipulation
-library(tsibble)
-# Forecasting functions
-library(fable)
-# Time series graphics and statistics
-library(feasts)
-# Tidy time series data
-library(tsibbledata)
-```
-
-## `tsibble` objects
-
-\fontsize{12}{13}\sf
-
-A `tsibble` allows storage and manipulation of time series in R.
-
-It contains:
-
-- Measured variable(s): numbers of interest
-- Key variable(s): unique identifiers for each series
-- An index: time information about the observation
-
-## `tsibble` objects
-
-### Example
-\fontsize{13}{15}\sf
-
-```{r tstable, cache=TRUE}
-library(tsibble)
-y <- tsibble(year = 2012:2016,
-  y = c(123,39,78,52,110), index = year)
-y
-```
-
-## The `tsibble` index
-
-Common time index variables can be created with these functions:
-
-```{r tstable2, echo=FALSE}
-tribble(
-  ~ `Frequency`, ~ Function,
-  "Annual", "start:end",
-  "Quarterly", "yearquarter()",
-  "Monthly", "yearmonth()",
-  "Weekly", "yearweek()",
-  "Daily", "as_date(), ymd()",
-  "Sub-daily", "as_datetime()"
-) %>%
-  knitr::kable(booktabs=TRUE)
-```
-
-## The `key` to many time series
-
-```{r tstablekey, echo=FALSE}
-tsibbledata::olympic_running %>%
-  group_by_key() %>%
-  slice(1) %>%
-  head(6) %>%
-  knitr::kable(booktabs=TRUE)
-```
-
-## The `key` to many time series
-
-```{r key-tsibble}
-olympic_running %>% as_tsibble(
-  key = id(Length, Sex), index = Year)
-```
-
-<!-- ## Seasonal periods -->
-
-<!-- \begin{tabular}{lrl} -->
-<!-- \bf Type of data & \hspace*{1.95cm}\bf frequency                 & \bf start example\hspace*{0.25cm} \\ -->
-<!-- \midrule -->
-<!-- Annual           & \only<2->{1}                                  & \only<3->{1995}\\ -->
-<!-- Quarterly        & \only<4->{4}                                  & \only<5->{c(1995,2)}\\ -->
-<!-- Monthly          & \only<6->{12}                                 & \only<7->{c(1995,9)}\\ -->
-<!-- Daily            & \only<8->{7 \emph{or} 365.25}                 & \only<9->{1 \emph{or} c(1995,234)} \\ -->
-<!-- Weekly           & \only<10->{52.18}                             & \only<11->{c(1995,23)}\\ -->
-<!-- Hourly           & \only<12->{24 \emph{or} 168 \emph{or} 8,766}  & \only<13->{1}\\ -->
-<!-- Half-hourly      & \only<14->{48 \emph{or} 336 \emph{or} 17,532} & \only<15>{1} -->
-<!-- \end{tabular} -->
-
-## Australian GDP
-
-\fontsize{12}{14}\sf
-
-```{r, echo = TRUE}
-aus_economy <- global_economy %>%
-  filter(Code == "AUS")
-```
-
-<!--   * Object: "tsibble" -->
-<!--   * Print and plotting methods available. -->
-
-```{r, echo=FALSE}
-aus_economy
-```
-
-## Australian GDP
-
-```{r, echo=TRUE, fig.height=4}
-aus_economy %>% autoplot(GDP)
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE,
+  dev.args = list(pointsize = 11)
+)
+options(digits = 3, width = 60)
+library(fpp3)
+global_economy <- global_economy %>%
+  select(Year, Country, GDP, Imports, Exports, Population)
+tourism <- tourism %>%
+  mutate(
+    State = recode(State,
+                   "Australian Capital Territory" = "ACT",
+                   "New South Wales"="NSW",
+                   "Northern Territory" = "NT",
+                   "Queensland" = "QLD",
+                   "South Australia" = "SA",
+                   "Tasmania" = "TAS",
+                   "Victoria"="VIC",
+                   "Western Australia" = "WA"
+    )
+  )
 ```
 
 # Time plots
 
 ## Time plots
+\fontsize{12}{13}\sf
 
-\small
-
-```{r, echo=TRUE, fig.height=4}
+```{r, echo=TRUE, fig.height=3.8}
 ansett %>%
   filter(Airports=="MEL-SYD", Class=="Economy") %>%
   autoplot(Passengers)
 ```
 
 ## Time plots
+\fontsize{12}{13}\sf
 
 ```{r a10, echo = TRUE}
-a10 <- PBS %>%
-  filter(ATC2 == "A10") %>%
-  summarise(Cost = sum(Cost)/1e6)
+PBS %>%
+  filter(ATC2=="A10") %>%
+  select(Month, Concession, Type, Cost) %>%
+  summarise(total_cost = sum(Cost)) %>%
+  mutate(total_cost = total_cost/1e6) ->
+  a10
 ```
+
 ```{r a10-print, echo = FALSE, dependson="a10"}
 a10
 ```
 
-
 ## Time plots
-
-\small
+\fontsize{12}{13}\sf
 
 ```{r a10-plot, echo=TRUE, dependson="a10"}
-a10 %>% autoplot(Cost) +
+a10 %>% autoplot(total_cost) +
   ylab("$ million") + xlab("Year") +
   ggtitle("Antidiabetic drug sales")
 ```
 
-## Your turn
-
-- Create plots of the following time series: Bricks from `aus_production`, Lynx from `pelt`, Google from `gafa_stock`
-- Use `help()` to find out about the data in each series.
-- For the last plot, modify the axis labels and title.
-
 ## Are time plots best?
-
-\fontsize{12}{14}\sf
+\fontsize{12}{13}\sf
 
 ```{r maxtemp, echo=FALSE}
-maxtemp <- aus_elec %>%
-  filter(State=="Victoria") %>%
+maxtemp <- vic_elec %>%
   index_by(Day = lubridate::date(Time)) %>%
   summarise(
     Temperature = max(Temperature),
@@ -199,8 +92,7 @@ maxtemp %>%
 ```
 
 ## Are time plots best?
-
-\fontsize{12}{14}\sf
+\fontsize{12}{13}\sf
 
 ```{r maxtemp2, warning=FALSE, message=FALSE, dependson="maxtemp"}
 maxtemp %>%
@@ -210,6 +102,7 @@ maxtemp %>%
 ```
 
 ## Are time plots best?
+\fontsize{12}{13}\sf
 
 ```{r maxtemp3, warning=FALSE, message=FALSE, echo=FALSE, dependson="maxtemp"}
 maxtemp %>%
@@ -224,7 +117,13 @@ maxtemp %>%
 
 ## Are time plots best?
 
-\fullheight{TemperatureBlanket}
+\full{TemperatureBlanket}
+
+## Lab Session 2
+
+- Create time plots of the following time series: Bricks from `aus_production`, Lynx from `pelt`, Google from `gafa_stock`
+- Use `help()` to find out about the data in each series.
+- For the last plot, modify the axis labels and title.
 
 # Seasonal plots
 
@@ -267,7 +166,7 @@ intervals %>%
 \footnotesize
 
 ```{r, echo=TRUE, dependson="a10"}
-a10 %>% gg_season(Cost, labels = "both") +
+a10 %>% gg_season(total_cost, labels = "both") +
   ylab("$ million") +
   ggtitle("Seasonal plot: antidiabetic drug sales")
 ```
@@ -294,7 +193,7 @@ a10 %>% gg_season(Cost, labels = "both") +
 
 ```{r, echo=TRUE, dependson="a10"}
 a10 %>%
-  gg_subseries(Cost) + ylab("$ million") +
+  gg_subseries(total_cost) + ylab("$ million") +
   ggtitle("Subseries plot: antidiabetic drug sales")
 ```
 
@@ -326,7 +225,7 @@ beer %>% gg_season(Beer, labels="right")
 beer %>% gg_subseries(Beer)
 ```
 
-## Your turn
+## Lab Session 3
 
 Look at the quarterly tourism data for the Snowy Mountains
 
@@ -601,18 +500,9 @@ google_2015 %>%
   autoplot()
 ```
 
-## Your turn
+## Lab Session 4
 
-We have introduced the following functions:
-
-  - `gg_lag`
-  - `ACF`
-
-Explore the following time series using these functions. Can you spot any seasonality, cyclicity and trend? What do you learn about the series?
-
-  - Bricks from `aus_production`
-  - Lynx from `pelt`
-  - Victorian Electricity Demand from `aus_elec`
+Use `gg_lag` and `ACF` on the Snowy Mountains tourism data. What do you learn about the series?
 
 ## Which is which?
 
@@ -707,7 +597,7 @@ in the state of Victoria, Australia, from January 2014 through December 2018
 
 These show the series is **not a white noise series**.
 
-## Your turn
+## Google stock prices
 
 You can compute the daily changes in the Google stock price in 2018 using
 
