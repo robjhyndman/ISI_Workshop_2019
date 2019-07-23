@@ -47,8 +47,6 @@ tourism <- tourism %>%
 \placefig{3}{4.85}{width=4cm}{feasts.png}
 \placefig{7}{4.85}{width=4cm}{fable.png}
 
-
-
 ## Time series data
 
   - Four-yearly Olympic winning times
@@ -102,7 +100,6 @@ global_economy
 \begin{alertblock}{}\fontsize{10}{10}\sf Measured variables\phantom{dg}\end{alertblock}
 \end{textblock}}
 
-
 ## `tsibble` objects
 
 \fontsize{10}{11.3}\sf
@@ -125,15 +122,14 @@ tourism
 \begin{block}{}\fontsize{10}{10}\sf Domestic visitor nights in thousands by state/region and purpose.\phantom{dg}\end{block}
 \end{textblock}}
 
-
 ## `tsibble` objects
 
-* A `tsibble` allows storage and manipulation of time series in R.
+* A `tsibble` allows storage and manipulation of multiple time series in R.
 
 * It contains:
 
-  + Measured variable(s): numbers of interest
   + An index: time information about the observation
+  + Measured variable(s): numbers of interest
   + Key variable(s): optional unique identifiers for each series
 
 * It works with tidyverse functions.
@@ -144,10 +140,9 @@ tourism
 \fontsize{12}{13}\sf
 
 ```{r tstable, cache=TRUE}
-library(tsibble)
-y <- tsibble(year = 2012:2016,
+mydata <- tsibble(year = 2012:2016,
   y = c(123,39,78,52,110), index = year)
-y
+mydata
 ```
 
 ## The `tsibble` index
@@ -156,7 +151,6 @@ y
 For observations more frequent than once per year, we need to use a time class function on the index.
 \end{block}
 \fontsize{12}{13}\sf
-
 
 ```{r tstablemonth, echo=FALSE}
 z <- tibble(Month = paste(2019, month.abb[1:5]), Observation = c(50, 23, 34, 30, 25))
@@ -198,7 +192,74 @@ tribble(
   knitr::kable(booktabs=TRUE)
 ```
 
-# Working with `tsibble` objects
+# Example: Australian prison population
+
+## Australian prison population
+
+\full{Beechworth_prison}
+
+## Create a tsibble from a csv
+\fontsize{13}{14}\sf
+
+```{r prison, echo=FALSE, warning=FALSE, message=FALSE}
+prison <- readr::read_csv("prison_population.csv")
+prison %>%
+  head(15) %>%
+  knitr::kable(booktabs=TRUE)
+```
+
+## Read a csv file and convert to a tsibble {-}
+\fontsize{10}{11}\sf
+
+```{r prison2, eval=FALSE}
+prison <- readr::read_csv("prison_population.csv")
+```
+
+```{r prison2a, dependson="prison", echo=FALSE}
+prison
+```
+
+## Read a csv file and convert to a tsibble {-}
+\fontsize{10}{11}\sf
+
+```{r prison3}
+prison <- readr::read_csv("prison_population.csv") %>%
+  mutate(Quarter = yearquarter(date))
+```
+
+```{r prison3a, dependson="prison3", echo=FALSE}
+prison
+```
+
+## Read a csv file and convert to a tsibble {-}
+\fontsize{10}{11}\sf
+
+```{r prison4}
+prison <- readr::read_csv("prison_population.csv") %>%
+  mutate(Quarter = yearquarter(date)) %>%
+  select(-date)
+```
+
+```{r prison4a, dependson="prison4", echo=FALSE}
+prison
+```
+
+## Read a csv file and convert to a tsibble {-}
+\fontsize{10}{11}\sf
+
+```{r prison5}
+prison <- readr::read_csv("prison_population.csv") %>%
+  mutate(Quarter = yearquarter(date)) %>%
+  select(-date) %>%
+  as_tsibble(index=Quarter,
+    key=c(state, gender, legal, indigenous))
+```
+
+```{r prison5a, dependson="prison5", echo=FALSE}
+prison
+```
+
+# Example: Australian pharmaceutical sales
 
 ## Australian Pharmaceutical Benefits Scheme
 
@@ -225,7 +286,6 @@ options(width=78)
 ```{r pbs1, dependson='wide'}
 PBS
 ```
-
 
 ## Working with `tsibble` objects {-}
 \fontsize{12}{14}\sf
@@ -284,7 +344,7 @@ We can use the `summarise()` function to summarise over keys.
 PBS %>%
   filter(ATC2=="A10") %>%
   select(Month, Concession, Type, Cost) %>%
-  summarise(TotalC = sum(Cost))
+  summarise(total_cost = sum(Cost))
 ```
 
 ## Working with `tsibble` objects {-}
@@ -298,8 +358,8 @@ We can use the `mutate()` function to create new variables.
 PBS %>%
   filter(ATC2=="A10") %>%
   select(Month, Concession, Type, Cost) %>%
-  summarise(TotalC = sum(Cost)) %>%
-  mutate(Cost = TotalC/1e6)
+  summarise(total_cost = sum(Cost)) %>%
+  mutate(total_cost = total_cost/1e6)
 ```
 
 ## Working with `tsibble` objects {-}
@@ -313,8 +373,8 @@ We can use the `mutate()` function to create new variables.
 PBS %>%
   filter(ATC2=="A10") %>%
   select(Month, Concession, Type, Cost) %>%
-  summarise(TotalC = sum(Cost)) %>%
-  mutate(Cost = TotalC/1e6) -> a10
+  summarise(total_cost = sum(Cost)) %>%
+  mutate(total_cost = total_cost/1e6) -> a10
 ```
 
 ```{r a10, echo=FALSE}
@@ -325,169 +385,10 @@ a10
 options(width=60)
 ```
 
-# Create a tsibble from a csv
+# Lab Session 1
 
-## Create a tsibble from a csv
-\fontsize{13}{14}\sf
+## Lab Session 1
 
-
-```{r prison, echo=FALSE, warning=FALSE, message=FALSE}
-prison <- readr::read_csv("../data/prison_population.csv")
-prison %>%
-  head(15) %>%
-  knitr::kable(booktabs=TRUE)
-prison <- prison %>%
-  mutate(Quarter = yearquarter(date)) %>%
-  select(-date) %>%
-  as_tsibble(index=Quarter, key=c(state, gender, legal, indigenous))
-```
-
-## Read a csv file and convert to a tsibble {-}
-\fontsize{10}{11}\sf
-
-```{r prison2, echo=TRUE, eval=FALSE}
-prison <- readr::read_csv("prison_population.csv") %>%
-  mutate(Quarter = yearquarter(date)) %>%
-  select(-date) %>%
-  as_tsibble(index=Quarter,
-    key=c(state, gender, legal, indigenous))
-```
-
-```{r prison3, dependson=prison}
-prison
-```
-
-### The seasonal period {-}
-<!-- TODO: Also detail problematic periods (months in daily data). -->
-
-Some graphics and some models will use the seasonal period of the data. The seasonal period\index{frequency}\index{period} is the number of observations before the seasonal pattern repeats. In most cases, this will be automatically detected using the time index variable.
-
-Some common periods for different time intervals are shown in the table below:
-
-```{r freqtable, echo=FALSE, message=FALSE}
-  intervals <- list(
-  Quarters = tsibble::new_interval(quarter = 1),
-  Months = tsibble::new_interval(month = 1),
-  Weeks = tsibble::new_interval(week = 1),
-  Days = tsibble::new_interval(day = 1),
-  Hours = tsibble::new_interval(hour = 1),
-  Minutes = tsibble::new_interval(minute = 1),
-  Seconds = tsibble::new_interval(second = 1)
-)
-
-intervals %>%
-  purrr::map(common_periods) %>%
-  purrr::map(as.list) %>%
-  purrr::map_dfr(as_tibble, .id = "Data") %>%
-  purrr::set_names(., stringr::str_to_sentence(colnames(.))) %>%
-  select(Data, Minute, Hour, Day, Week, Year) %>%
-  mutate_all(format, scientific = FALSE, nsmall = 2) %>%
-  mutate_all(~ gsub(".00", "", ., fixed = TRUE)) %>%
-  mutate_all(~ gsub("   NA", "", ., fixed=TRUE)) %>%
-  knitr::kable(booktabs=TRUE)
-```
-
-For quarterly, monthly and weekly data, there is only one seasonal period --- the number of observations within each year. Actually, there are not $52$ weeks in a year, but $365.25/7 = `r sprintf("%.2f",365.25/7)`$ on average, allowing for a leap year every fourth year. Approximating seasonal periods to integers can be useful as many seasonal terms in models only support integer seasonal periods.
-
-If the data is observed more than once per week, then there is often more than one seasonal pattern in the data. For example, data with daily observations\index{daily data} might have weekly (period$=7$) or annual (period$=365.25$) seasonal patterns. Similarly, data that are observed every minute might have hourly (period$=60$), daily (period$=24\times60=1440$), weekly (period$=24\times60\times7=10080$) and annual seasonality (period$=24\times60\times365.25=525960$).\index{hourly data}\index{multiple seasonality}\index{sub-daily data}
-
-More complicated (and unusual) seasonal patterns can be specified using the `period()` function in the lubridate package.
-
-# Time plots
-
-## Time plots
-
-```{r a10-print, echo = TRUE, dependson="a10"}
-a10
-```
-
-## Time plots
-
-\small
-
-```{r a10-plot, echo=TRUE, dependson="a10"}
-a10 %>% autoplot(Cost)
-```
-
-## Time plots
-
-\small
-
-```{r a10-plot2, echo=TRUE, dependson="a10"}
-a10 %>% autoplot(Cost) +
-  ylab("$ million") + xlab("Year") +
-  ggtitle("Antidiabetic drug sales")
-```
-
-## Time plots
-
-\small
-
-```{r, echo=TRUE,}
-ansett
-```
-
-## Time plots
-
-\small
-
-```{r, echo=TRUE,}
-ansett %>%
-  filter(Airports=="MEL-SYD", Class=="Economy") %>%
-  autoplot(Passengers)
-```
-
-## Your turn
-
-- Create plots of the following time series: Bricks from `aus_production`, Lynx from `pelt`, Google from `gafa_stock`
-- Use `help()` to find out about the data in each series.
-- For the last plot, modify the axis labels and title.
-
-## Are time plots best?
-
-\fontsize{12}{14}\sf
-
-```{r maxtemp, echo=FALSE}
-maxtemp <- vic_elec %>%
-  index_by(Day = lubridate::date(Time)) %>%
-  summarise(
-    Temperature = max(Temperature),
-    Demand = sum(Demand),
-    Holiday = any(Holiday)
-  )
-```
-
-```{r maxtemp1, warning=FALSE, message=FALSE, dependson="maxtemp"}
-maxtemp %>%
-  autoplot(Temperature) +
-  xlab("Week") + ylab("Max temperature")
-```
-
-## Are time plots best?
-
-\fontsize{12}{14}\sf
-
-```{r maxtemp2, warning=FALSE, message=FALSE, dependson="maxtemp"}
-maxtemp %>%
-  ggplot(aes(x = Day, y = Temperature)) +
-  geom_point() +
-  xlab("Week") + ylab("Max temperature")
-```
-
-## Are time plots best?
-
-```{r maxtemp3, warning=FALSE, message=FALSE, echo=FALSE, dependson="maxtemp"}
-maxtemp %>%
-  ggplot(aes(x = Day, y = 1)) +
-  geom_tile(aes(fill = Temperature)) +
-  scale_fill_gradient2(
-    low = "navy",
-    mid = "yellow",
-   high = "red", midpoint=28) +
-  ylab("") + scale_y_discrete(expand=c(0,0))
-```
-
-## Are time plots best?
-
-\full{TemperatureBlanket}
+ * Create tsibble from csv
+ * Use filter, select, summarise, etc. to do something with the result.
 
