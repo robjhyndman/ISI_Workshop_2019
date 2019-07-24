@@ -21,6 +21,94 @@ options(digits = 3, width = 60)
 library(fpp3)
 library(broom)
 ```
+
+# STL Features
+
+## Strength of seasonality and trend
+
+\begin{alertblock}{STL decomposition}
+\centerline{$y_t = T_t+S_t+R_t$}
+\end{alertblock}
+
+### Seasonal strength
+$$\max\left(0, 1-\frac{\text{Var}(R_t)}{\text{Var}(S_t+R_t)}\right)$$
+
+### Trend strength
+$$\max\left(0, 1-\frac{\text{Var}(R_t)}{\text{Var}(T_t+R_t)}\right)$$
+
+## Feature extraction and statistics
+
+\fontsize{9}{10}\sf
+
+```{r features}
+tourism %>% features(Trips, feat_stl)
+```
+
+## Feature extraction and statistics
+\fontsize{8}{9}\sf
+
+```{r features-plot, fig.height=4.1}
+tourism %>% features(Trips, feat_stl) %>%
+  ggplot(aes(x=trend_strength, y=seasonal_strength_year, col=Purpose)) +
+    geom_point() + facet_wrap(vars(State))
+```
+
+\only<2->{\begin{textblock}{4.7}(7.8,7.3)
+\begin{alertblock}{}\fontsize{10}{10}\sf
+\begin{itemize}\tightlist
+\item Holidays more seasonal than other travel.
+\item WA has strongest trends.
+\end{itemize}
+\end{alertblock}\end{textblock}}
+
+## Feature extraction and statistics
+\fontsize{9}{9}\sf
+
+Find the most seasonal time series:
+
+```{r extreme}
+most_seasonal <- tourism %>%
+  features(Trips, feat_stl) %>%
+  filter(seasonal_strength_year == max(seasonal_strength_year))
+```
+
+\pause\vspace*{-0.3cm}
+
+```{r extreme2, fig.height=2.8}
+tourism %>%
+  right_join(most_seasonal, by = c("State","Region","Purpose")) %>%
+  ggplot(aes(x = Quarter, y = Trips)) + geom_line() +
+  facet_grid(vars(State,Region,Purpose))
+```
+
+
+## Feature extraction and statistics
+\fontsize{9}{9}\sf
+
+Find the most trended time series:
+
+```{r extreme3}
+most_trended <- tourism %>%
+  features(Trips, feat_stl) %>%
+  filter(trend_strength == max(trend_strength))
+```
+
+\pause\vspace*{-0.3cm}
+
+```{r extreme4, fig.height=2.8}
+tourism %>%
+  right_join(most_trended, by = c("State","Region","Purpose")) %>%
+  ggplot(aes(x = Quarter, y = Trips)) + geom_line() +
+  facet_grid(vars(State,Region,Purpose))
+```
+
+# Lab Session 5
+
+## Lab Session 5
+
+ * Use ``GGally::ggpairs()`` to look at the relationships between the STL-based features. You might wish to change `seasonal_peak_year` and `seasonal_trough_year` to factors.
+ * Which is the peak quarter for holidays in each state?
+
 # Lag plots and autocorrelation
 
 ## Example: Beer production
@@ -45,7 +133,6 @@ new_production %>% gg_lag(Beer)
 ```{r, fig.height=6.5, fig.width=6.5, out.width="8cm"}
 new_production %>% gg_lag(Beer, geom='point')
 ```
-
 
 ## Lagged scatterplots
 
@@ -153,53 +240,6 @@ holidays %>% ACF(Trips) %>% autoplot()
 
 ```{r featuresacf}
 tourism %>% features(Trips, feat_acf)
-```
-
-# STL Features
-
-## Feature extraction and statistics
-
-\fontsize{9}{10}\sf
-
-```{r features}
-tourism %>% features(Trips, feat_stl)
-```
-
-## Feature extraction and statistics
-\fontsize{8}{9}\sf
-
-```{r features-plot, fig.height=4.6}
-tourism %>% features(Trips, feat_stl) %>%
-  ggplot(aes(x=trend_strength, y=seasonal_strength_year, col=Purpose)) +
-    geom_point() + facet_wrap(vars(State))
-```
-
-\only<2->{\begin{textblock}{4.7}(7.8,7.3)
-\begin{alertblock}{}\fontsize{10}{10}\sf
-\begin{itemize}\tightlist
-\item Holidays more seasonal than other travel.
-\item WA has strongest trends.
-\end{itemize}
-\end{alertblock}\end{textblock}}
-
-## Feature extraction and statistics
-\fontsize{9}{9}\sf
-
-Find the most seasonal time series:
-
-```{r extreme}
-most_seasonal <- tourism %>%
-  features(Trips, feat_stl) %>%
-  filter(seasonal_strength_year == max(seasonal_strength_year))
-```
-
-\pause\vspace*{-0.3cm}
-
-```{r extreme2, fig.height=3.}
-tourism %>%
-  right_join(most_seasonal, by = c("State","Region","Purpose")) %>%
-  ggplot(aes(x = Quarter, y = Trips)) + geom_line() +
-  facet_grid(vars(State,Region,Purpose))
 ```
 
 # Dimension reduction for features
@@ -348,3 +388,12 @@ outliers %>%
     ggtitle("Outlying time series in PC space") +
     theme(legend.position = "none")
 ```
+
+# Lab Session 6
+
+## Lab Session 6
+
+* Use a feature-based approach to look for outlying series in `PBS`.
+
+* What is unusual about these series?
+
