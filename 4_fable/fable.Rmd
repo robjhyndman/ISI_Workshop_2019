@@ -1,0 +1,23 @@
+---
+title: "High dimensional time series analysis"
+date: "robjhyndman.com/hdtsa"
+author: "4. Automatic forecasting"
+toc: true
+output:
+  binb::monash:
+    colortheme: monashwhite
+    fig_width: 7
+    fig_height: 3.5
+    includes:
+      in_header: ../header.tex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE,
+  dev.args = list(pointsize = 11)
+)
+options(digits = 3, width = 60)
+library(fpp3)
+```
+
