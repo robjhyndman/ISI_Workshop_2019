@@ -1,7 +1,7 @@
 ---
 title: "High dimensional time series analysis"
 date: "robjhyndman.com/hdtsa"
-author: "4. Automatic forecasting"
+author: "4. Automatic forecasting algorithms"
 toc: true
 output:
   binb::monash:
@@ -18,6 +18,2591 @@ knitr::opts_chunk$set(
   dev.args = list(pointsize = 11)
 )
 options(digits = 3, width = 60)
+library(tidyverse)
 library(fpp3)
+usmelec <- as_tsibble(fpp2::usmelec) %>%
+  rename(Month = index, Generation = value)
+us_change <- readr::read_csv("https://otexts.com/fpp3/extrafiles/us_change.csv")  %>%
+  mutate(Time = yearquarter(Time)) %>%
+  as_tsibble(index = Time)
+eu_retail <- as_tsibble(fpp2::euretail)
+h02 <- tsibbledata::PBS %>%
+  filter(ATC2 == "H02") %>%
+  summarise(Cost = sum(Cost))
 ```
 
+# Exponential smoothing
+
+## Historical perspective
+
+ * Developed in the 1950s and 1960s as methods (algorithms) to produce point forecasts.
+ * Combine a "level", "trend" (slope) and "seasonal" component to describe a time series.
+ * The rate of change of the components are controlled by "smoothing parameters":\newline $\alpha$, $\beta$ and $\gamma$ respectively.
+  * Need to choose best values for the smoothing parameters (and initial states).
+  * Equivalent ETS state space models developed in the 1990s and 2000s.
+
+## Big idea: control the rate of change (smoothing)
+
+$\alpha$ controls the flexibility of the **level**
+
+* If $\alpha = 0$, the level never updates (mean)
+* If $\alpha = 1$, the level updates completely (naive)
+
+$\beta$ controls the flexibility of the **trend**
+
+* If $\beta = 0$, the trend is linear (regression trend)
+* If $\beta = 1$, the trend updates every observation
+
+$\gamma$ controls the flexibility of the **seasonality**
+
+* If $\gamma = 0$, the seasonality is fixed (seasonal means)
+* If $\gamma = 1$, the seasonality updates completely (seasonal naive)
+
+## A model for levels, trends, and seasonalities
+
+We want a model that captures the level ($\ell_t$), trend ($b_t$) and seasonality ($s_t$).
+
+How do we combine these elements?
+
+\pause
+
+### Additively?
+
+$y_t = \ell_{t-1} + b_{t-1} + s_{t-m} + \varepsilon_t$
+
+\pause
+
+### Multiplicatively?
+
+$y_t = \ell_{t-1}b_{t-1}s_{t-m}(1 + \varepsilon_t)$
+
+\pause
+
+### Perhaps a mix of both?
+
+$y_t = (\ell_{t-1} + b_{t-1}) s_{t-m} + \varepsilon_t$
+
+## ETS models
+
+\begin{block}{}
+\hspace*{-0.25cm}\begin{tabular}{l@{}p{2.3cm}@{}c@{}l}
+\structure{General n\rlap{otation}}
+    &       & ~E T S~  & ~:\hspace*{0.3cm}\textbf{E}xponen\textbf{T}ial \textbf{S}moothing               \\ [-0.2cm]
+    & \hfill{$\nearrow$\hspace*{-0.1cm}}        & {$\uparrow$} & {\hspace*{-0.2cm}$\nwarrow$} \\
+    & \hfill{\textbf{E}rror\hspace*{0.2cm}} & {\textbf{T}rend}      & {\hspace*{0.2cm}\textbf{S}eason}
+\end{tabular}
+\end{block}
+
+\alert{\textbf{E}rror:} Additive (`"A"`) or multiplicative (`"M"`)
+\pause
+
+\alert{\textbf{T}rend:} None (`"N"`), additive (`"A"`), multiplicative (`"M"`), or damped (`"Ad"` or `"Md"`).
+\pause
+
+\alert{\textbf{S}easonality:} None (`"N"`), additive (`"A"`) or multiplicative (`"M"`)
+
+
+## ETS(A,N,N): SES with additive errors
+
+\begin{block}{}\vspace*{-0.4cm}
+\begin{align*}
+\text{Measurement equation}&& y_t &= \ell_{t-1} + \varepsilon_t\\
+\text{State equation}&& \ell_t&=\ell_{t-1}+\alpha \varepsilon_t
+\end{align*}
+\end{block}
+where $\varepsilon_t\sim\text{NID}(0,\sigma^2)$.
+
+  * "innovations" or "single source of error" because equations have the same error process, $\varepsilon_t$.
+  * Measurement equation: relationship between observations and states.
+  * Transition/state equation(s): evolution of the state(s) through time.
+
+## ETS(M,N,N): SES with multiplicative errors.
+
+  * Specify relative errors  $\varepsilon_t=\frac{y_t-\pred{y}{t}{t-1}}{\pred{y}{t}{t-1}}\sim \text{NID}(0,\sigma^2)$
+  * Substituting $\pred{y}{t}{t-1}=\ell_{t-1}$ gives:
+    * $y_t = \ell_{t-1}+\ell_{t-1}\varepsilon_t$
+    * $e_t = y_t - \pred{y}{t}{t-1} = \ell_{t-1}\varepsilon_t$
+
+ \pause
+\begin{block}{}\vspace*{-0.4cm}
+\begin{align*}
+\text{Measurement equation}&& y_t &= \ell_{t-1}(1 + \varepsilon_t)\\
+\text{State equation}&& \ell_t&=\ell_{t-1}(1+\alpha \varepsilon_t)
+\end{align*}
+\end{block}
+\pause
+
+  * Models with additive and multiplicative errors with the same parameters generate the same point forecasts but different prediction intervals.
+
+## ETS(A,N,N): Specifying the model
+
+\fontsize{13}{15}\sf
+
+```{r ann-spec, echo = TRUE, results = "hide"}
+ETS(y ~ error("A") + trend("N") + season("N"))
+```
+
+\fontsize{14}{16}\sf
+
+By default, an optimal value for $\alpha$ and $\ell_0$ is used.
+
+$\alpha$ can be chosen manually in `trend()`.
+
+```{r alpha-spec, echo = TRUE, eval = FALSE}
+trend("N", alpha = 0.5)
+trend("N", alpha_range = c(0.2, 0.8))
+```
+
+## Example: Algerian Exports
+
+\fontsize{9}{10}\sf
+
+```{r ses-fit, echo=TRUE, cache=TRUE}
+algeria_economy <- tsibbledata::global_economy %>%
+  filter(Country == "Algeria")
+fit <- algeria_economy %>%
+  model(ANN = ETS(Exports ~ error("A") + trend("N") + season("N")))
+report(fit)
+```
+
+## Example: Algerian Exports
+
+\fontsize{10}{11}\sf\vspace*{-0.2cm}
+
+```{r ses-cmp, echo = TRUE}
+components(fit) %>%
+  left_join(fitted(fit), by = c("Country", ".model", "Year"))
+```
+
+## Example: Algerian Exports
+
+\fontsize{12}{12}\sf
+
+```{r ses-fc, echo=TRUE, cache=TRUE}
+fit %>%
+  forecast(h = 5) %>%
+  autoplot(algeria_economy) +
+  ylab("Exports (% of GDP)") + xlab("Year")
+```
+
+## ETS(A,A,N): Holt's linear trend
+
+Holt's linear method with additive errors.
+
+  * Assume $\varepsilon_t=y_t-\ell_{t-1}-b_{t-1} \sim \text{NID}(0,\sigma^2)$.
+  * Substituting into the error correction equations for Holt's linear method\vspace*{-0.2cm}
+  \begin{align*}
+      y_t&=\ell_{t-1}+b_{t-1}+\varepsilon_t\\
+      \ell_t&=\ell_{t-1}+b_{t-1}+\alpha \varepsilon_t\\
+      b_t&=b_{t-1}+\alpha\beta^* \varepsilon_t
+  \end{align*}
+  * For simplicity, set $\beta=\alpha \beta^*$.
+
+## Exponential smoothing: trend/slope
+
+```{r beta-anim, cache=TRUE, echo=FALSE, fig.show='animate', interval=1/10, message=FALSE, fig.height=5, fig.width=8, aniopts='controls,buttonsize=0.3cm,width=11.5cm'}
+library(gganimate)
+apple_stock <- gafa_stock %>%
+  filter(Symbol == "AAPL") %>%
+  mutate(trading_day = row_number()) %>%
+  update_tsibble(index = trading_day, regular = TRUE)
+beta_anim <- map_dfr(set_names(seq(0, 0.005, length.out = 100),seq(0, 0.005, length.out = 100)),
+                     function(beta){
+    apple_stock %>%
+      model(ETS(Close ~ error("A") + trend("A", alpha = 0.001, alpha_range = c(-1,1),
+            beta = beta, beta_range = c(-1,1)) + season("N", gamma_range = c(-1,1)), bounds = "admissible")) %>%
+      augment() %>%
+      as_tibble()
+  }, .id = "beta") %>%
+  mutate(beta = 0.005-as.numeric(beta))
+beta_anim %>%
+  left_join(select(apple_stock, trading_day, Date), by = "trading_day") %>%
+  ggplot(aes(x = Date, y = Close)) +
+  geom_line() +
+  geom_line(aes(y = .fitted), colour = "blue") +
+  transition_manual(beta) +
+  ylab("Closing price ($USD)") +
+  ggtitle("Apple closing stock price: trend (beta = {format(0.005-as.numeric(as.character(current_frame)), nsmall=2)})")
+```
+
+## Exponential smoothing: trend/slope
+
+```{r beta-static, fig.height=5, fig.width=8}
+beta_static <- map_dfr(list(0, 0.001),
+                     function(beta){
+    fit <- apple_stock %>%
+      model(ETS(Close ~ error("A") + trend("A", alpha = 0.00001, alpha_range = c(-.1,1),
+            beta = beta, beta_range = c(-0.1,0.005)) + season("N", gamma_range = c(-1,1)), bounds = "admissible"))
+    fit %>%
+      augment() %>%
+      mutate(beta = tidy(fit)$estimate[tidy(fit)$term == "beta"]) %>%
+      as_tibble()
+  }) %>%
+  mutate(beta = factor(format(beta))) %>%
+  left_join(select(apple_stock, trading_day, Date), by = "trading_day")
+apple_stock %>%
+  ggplot(aes(x = Date, y = Close)) +
+  geom_line() +
+  geom_line(aes(y = .fitted, colour = beta), data = beta_static) +
+  ylab("Closing price ($USD)") +
+  ggtitle("Apple closing stock price: trend")
+```
+
+## ETS(M,A,N)
+
+Holt's linear method with multiplicative errors.
+
+  * Assume $\varepsilon_t=\frac{y_t-(\ell_{t-1}+b_{t-1})}{(\ell_{t-1}+b_{t-1})}$
+  * Following a similar approach as above, the innovations state space model underlying Holt's linear method with multiplicative errors is specified as\vspace*{-0.4cm}
+  \begin{align*}
+      y_t&=(\ell_{t-1}+b_{t-1})(1+\varepsilon_t)\\
+      \ell_t&=(\ell_{t-1}+b_{t-1})(1+\alpha \varepsilon_t)\\
+      b_t&=b_{t-1}+\beta(\ell_{t-1}+b_{t-1}) \varepsilon_t
+  \end{align*}
+  where again  $\beta=\alpha \beta^*$ and $\varepsilon_t \sim \text{NID}(0,\sigma^2)$.
+
+## ETS(A,A,N): Specifying the model
+
+\fontsize{13}{15}\sf
+
+```{r aan-spec, echo = TRUE, results = "hide"}
+ETS(y ~ error("A") + trend("A") + season("N"))
+```
+
+\fontsize{14}{16}\sf
+
+By default, optimal values for $\beta$ and $b_0$ are used.
+
+$\beta$ can be chosen manually in `trend()`.
+
+```{r beta-spec, echo = TRUE, eval = FALSE}
+trend("A", beta = 0.004)
+trend("A", beta_range = c(0, 0.1))
+```
+
+## Example: Australian population
+
+\fontsize{10}{11}\sf
+
+```{r holt-fit, echo=TRUE}
+aus_economy <- global_economy %>% filter(Code == "AUS") %>%
+  mutate(Pop = Population/1e6)
+fit <- aus_economy %>%
+  model(AAN = ETS(Pop ~ error("A") + trend("A") + season("N")))
+report(fit)
+```
+
+## Example: Australian population
+
+\fontsize{10}{11}\sf
+
+```{r holt-cmp, echo=TRUE, dependson='holt-fit'}
+components(fit) %>%
+  left_join(fitted(fit), by = c("Country", ".model", "Year"))
+```
+
+## Example: Australian population
+
+\fontsize{12}{12}\sf
+
+```{r holt-fc, echo=TRUE, cache=TRUE, dependson='holt-fit'}
+fit %>%
+  forecast(h = 10) %>%
+  autoplot(aus_economy) +
+  ylab("Population") + xlab("Year")
+```
+
+## Damped trend method
+\begin{block}{Component form}\vspace*{-0.4cm}
+\begin{align*}
+\pred{y}{t+h}{t} &= \ell_{t} + (\phi+\phi^2 + \dots + \phi^{h})b_{t} \\
+\ell_{t} &= \alpha y_{t} + (1 - \alpha)(\ell_{t-1} + \phi b_{t-1})\\
+b_{t} &= \beta^*(\ell_{t} - \ell_{t-1}) + (1 -\beta^*)\phi b_{t-1}.
+\end{align*}
+\end{block}
+\pause
+
+  * Damping parameter $0<\phi<1$.
+  * If $\phi=1$, identical to Holt's linear trend.
+  * As $h\rightarrow\infty$, $\pred{y}{T+h}{T}\rightarrow \ell_T+\phi b_T/(1-\phi)$.
+  * Short-run forecasts trended, long-run forecasts constant.
+
+## Your turn
+\large
+
+ * Write down the model for ETS(A,Ad,N)
+
+## Example: Australian population
+\fontsize{10}{11}\sf
+
+```{r, echo=TRUE, fig.height=3.6}
+aus_economy %>%
+  model(holt = ETS(Pop ~ error("A") + trend("Ad") + season("N"))) %>%
+  forecast(h = 10) %>%
+  autoplot(aus_economy)
+```
+
+## Example: Australian population
+\fontsize{9}{12}\sf
+
+```{r, echo=TRUE}
+fit <- aus_economy %>%
+  filter(Year <= 2010) %>%
+  model(
+    ses = ETS(Pop ~ error("A") + trend("N") + season("N")),
+    holt = ETS(Pop ~ error("A") + trend("A") + season("N")),
+    damped = ETS(Pop ~ error("A") + trend("Ad") + season("N"))
+  )
+```
+
+```{r, echo = TRUE, results = 'hide'}
+tidy(fit)
+accuracy(fit)
+```
+
+## Example: Australian population
+\fontsize{13}{15}\sf
+
+```{r echo=FALSE}
+fit_terms <- tidy(fit) %>%
+  spread(.model, estimate) %>%
+  mutate(term = factor(term, levels = c("alpha", "beta", "phi", "l", "b"), labels = c("$\\alpha$", "$\\beta^*$", "$\\phi$", "$\\ell_0$", "$b_0$"))) %>%
+  arrange(term)
+
+fit_accuracy <- accuracy(fit) %>%
+  bind_rows(
+    forecast(fit, h = 9) %>%
+      accuracy(aus_economy)
+  ) %>%
+  gather(term, estimate, -Country, -.model, -.type) %>%
+  spread(.model, estimate) %>%
+  filter(term == "RMSE" | .type == "Test" & term %in% c("RMSE", "MAE", "MAPE", "MASE")) %>%
+  arrange(desc(.type), desc(term)) %>%
+  unite("term", .type, term, sep = " ")
+
+bind_rows(fit_terms, fit_accuracy) %>%
+  select(term, ses, holt, damped) %>%
+  rename(SES = ses, `Linear trend` = holt, `Damped trend` = damped) %>%
+  mutate_if(is.numeric, ~ ifelse(is.na(.), "", formatC(., format = "f", 2))) %>%
+  knitr::kable(booktabs = TRUE, align='r')
+```
+
+## Your turn
+
+`fma::eggs` contains the price of a dozen eggs in the United States from 1900–1993
+
+ 1. Use SES and Holt’s method (with and without damping) to forecast “future” data.
+
+     [Hint: use h=100 so you can clearly see the differences between the options when plotting the forecasts.]
+ 1. Which method gives the best training RMSE?
+ 1. Are these RMSE values comparable?
+ 1. Do the residuals from the best fitting method look like white noise?
+
+# Models with seasonality
+
+## Holt-Winters additive method
+\fontsize{13}{15}\sf
+
+Holt and Winters extended Holt's method to capture seasonality.
+\begin{block}{Component form}\vspace*{-0.4cm}
+\begin{align*}
+\pred{y}{t+h}{t} &= \ell_{t} + hb _{t} + s_{t+h-m(k+1)} \\
+\ell_{t} &= \alpha(y_{t} - s_{t-m}) + (1 - \alpha)(\ell_{t-1} + b_{t-1})\\
+b_{t} &= \beta^*(\ell_{t} - \ell_{t-1}) + (1 - \beta^*)b_{t-1}\\
+s_{t} &= \gamma (y_{t}-\ell_{t-1}-b_{t-1}) + (1-\gamma)s_{t-m}
+\end{align*}
+\end{block}\fontsize{12}{14}\sf
+
+  * $k=$ integer part of $(h-1)/m$. Ensures estimates from the final year are used for forecasting.
+  * Parameters:&nbsp; $0\le \alpha\le 1$,&nbsp; $0\le \beta^*\le 1$,&nbsp; $0\le \gamma\le 1-\alpha$&nbsp;  and $m=$  period of seasonality (e.g. $m=4$ for quarterly data).
+
+## Holt-Winters additive method
+
+  * Seasonal component is usually expressed as
+        $s_{t} = \gamma^* (y_{t}-\ell_{t})+ (1-\gamma^*)s_{t-m}.$
+  * Substitute in for $\ell_t$:
+        $s_{t} = \gamma^*(1-\alpha) (y_{t}-\ell_{t-1}-b_{t-1})+ [1-\gamma^*(1-\alpha)]s_{t-m}$
+  * We set $\gamma=\gamma^*(1-\alpha)$.
+  * The usual parameter restriction is $0\le\gamma^*\le1$, which translates to $0\le\gamma\le(1-\alpha)$.
+
+## Exponential smoothing: seasonality
+
+```{r gamma-anim, cache=TRUE, echo=FALSE, fig.show='animate', interval=1/10, message=FALSE, fig.height=5, fig.width=8, aniopts='controls,buttonsize=0.3cm,width=11.5cm'}
+library(gganimate)
+j07 <- PBS %>%
+  filter(ATC2 == "J07") %>%
+  summarise(Cost = sum(Cost))
+gamma_anim <- map_dfr(set_names(seq(0, 1, 0.01),seq(0, 1, 0.01)), function(gamma){
+  j07 %>%
+    model(ETS(Cost ~ error("A") + trend("N", alpha = 0.001, alpha_range = c(-1,1),
+              beta_range = c(-1,1)) + season("A", gamma = gamma, gamma_range = c(-1,1)), bounds = "admissible")) %>%
+    augment() %>%
+    as_tibble()
+}, .id = "gamma") %>%
+  mutate(gamma = 1-as.numeric(gamma))
+gamma_anim %>%
+  ggplot(aes(x = Month, y = Cost)) +
+  geom_line() +
+  geom_line(aes(y = .fitted), colour = "blue") +
+  transition_manual(gamma) +
+  ylab("Cost of scripts ($AUD)") +
+  ggtitle("Medicare Australia cost of vaccine scripts: seasonality (gamma = {format(1-as.numeric(as.character(current_frame)), nsmall=2)})")
+```
+
+## Exponential smoothing: seasonality
+
+```{r gamma-static, fig.height=5, fig.width=8}
+gamma_static <- map_dfr(list(0, NULL, 1), function(gamma){
+  fit <- j07 %>%
+    model(ETS(Cost ~ error("A") + trend("N", alpha = 0.001, alpha_range = c(-1,1),
+              beta_range = c(-1,1)) + season("A", gamma = gamma, gamma_range = c(-1,1)), bounds = "admissible"))
+  fit %>%
+    augment() %>%
+    mutate(gamma = tidy(fit)$estimate[tidy(fit)$term == "gamma"]) %>%
+    as_tibble()
+}) %>%
+  mutate(gamma = factor(format(gamma)))
+j07 %>%
+  ggplot(aes(x = Month, y = Cost)) +
+  geom_line() +
+  geom_line(aes(y = .fitted, colour = gamma), data = gamma_static) +
+  ylab("Cost of scripts ($AUD)") +
+  ggtitle("Medicare Australia cost of vaccine scripts: seasonality")
+```
+
+## ETS(A,A,A)
+
+Holt-Winters additive method with additive errors.
+
+\begin{block}{}\vspace*{-0.4cm}
+\begin{align*}
+\text{Forecast equation} && \hat{y}_{t+h|t} &= \ell_{t} + hb_{t} + s_{t+h-m(k+1)}\\
+\text{Observation equation}&& y_t&=\ell_{t-1}+b_{t-1}+s_{t-m} + \varepsilon_t\\
+\text{State equations}&& \ell_t&=\ell_{t-1}+b_{t-1}+\alpha \varepsilon_t\\
+&&        b_t&=b_{t-1}+\beta \varepsilon_t \\
+&&s_t &= s_{t-m} + \gamma\varepsilon_t
+\end{align*}
+\end{block}
+
+* Forecast errors: $\varepsilon_{t} = y_t - \hat{y}_{t|t-1}$
+* $k$ is integer part of $(h-1)/m$.
+
+## Your turn
+\large
+
+ * Write down the model for ETS(A,N,A)
+
+## Holt-Winters multiplicative method
+\fontsize{13}{14}\sf\vspace*{-0.1cm}
+
+For when seasonal variations are changing proportional to the level of the series.
+
+\begin{block}{Component form}\vspace*{-0.3cm}
+    \begin{align*}
+        \pred{y}{t+h}{t} &= (\ell_{t} + hb_{t})s_{t+h-m(k+1)} \\
+        \ell_{t} &= \alpha \frac{y_{t}}{s_{t-m}} + (1 - \alpha)(\ell_{t-1} + b_{t-1})\\
+        b_{t} &= \beta^*(\ell_{t}-\ell_{t-1}) + (1 - \beta^*)b_{t-1}        \\
+        s_{t} &= \gamma \frac{y_{t}}{(\ell_{t-1} + b_{t-1})} + (1 - \gamma)s_{t-m}
+    \end{align*}
+\end{block}\vspace*{-0.2cm}\fontsize{11}{12}\sf
+
+  * $k$ is integer part of $(h-1)/m$.
+  * With additive method $s_t$ is in absolute terms:\newline within each year $\sum_i s_i \approx 0$.
+  * With multiplicative method $s_t$ is in relative terms:\newline within each year $\sum_i s_i \approx m$.
+
+## ETS(M,A,M)
+
+Holt-Winters multiplicative method with multiplicative errors.
+
+\begin{block}{}\vspace*{-0.4cm}
+\begin{align*}
+\text{Forecast equation} && \hat{y}_{t+h|t} &= (\ell_{t} + hb_{t}) s_{t+h-m(k+1)}\\
+\text{Observation equation}&& y_t&= (\ell_{t-1}+b_{t-1})s_{t-m}(1 + \varepsilon_t)\\
+\text{State equations}&& \ell_t&=(\ell_{t-1}+b_{t-1})(1+\alpha \varepsilon_t)\\
+&&        b_t&=b_{t-1}(1+\beta \varepsilon_t) \\
+&&s_t &= s_{t-m}(1 + \gamma\varepsilon_t)
+\end{align*}
+\end{block}
+
+* Forecast errors: $\varepsilon_{t} = (y_t - \hat{y}_{t|t-1})/\hat{y}_{t|t-1}$
+* $k$ is integer part of $(h-1)/m$.
+
+## Example: Australian holiday tourism
+
+\fontsize{9}{10}\sf
+
+```{r 7-HW, echo=TRUE}
+aus_holidays <- tourism %>%
+  filter(Purpose == "Holiday") %>%
+  summarise(Trips = sum(Trips))
+fit <- aus_holidays %>%
+  model(
+    additive = ETS(Trips ~ error("A") + trend("A") + season("A")),
+    multiplicative = ETS(Trips ~ error("M") + trend("A") + season("M"))
+  )
+fc <- fit %>% forecast()
+```
+
+```{r, fig.height=2.6}
+fc %>%
+  autoplot(aus_holidays, level = NULL) + xlab("Year") +
+  ylab("Overnight trips (thousands)") +
+  scale_color_brewer(type = "qual", palette = "Dark2")
+```
+
+## Estimated components
+
+```{r, echo = TRUE, results = 'hide'}
+components(fit)
+```
+
+```{r fig-7-LevelTrendSeas}
+components(fit) %>%
+  gather("state", "value", -.model, -Quarter, factor_key = TRUE) %>%
+  group_by(.model) %>%
+  group_split() %>%
+  map(
+    ~ ggplot(., aes(x = Quarter, y = value)) +
+      geom_line() +
+      facet_grid(state ~ ., scales = "free") +
+      xlab("Year") + ylab(NULL) +
+      ggtitle(str_to_title(unique(.$.model)) %>% paste("states"))
+  ) %>%
+  invoke(gridExtra::grid.arrange, ., ncol = 2)
+```
+
+## Holt-Winters damped method
+Often the single most accurate forecasting method for seasonal data:
+\begin{block}{}\vspace*{-0.4cm}
+\begin{align*}
+\pred{y}{t+h}{t} &= [\ell_{t} + (\phi+\phi^2 + \dots + \phi^{h})b_{t}]s_{t+h-m(k+1)} \\
+\ell_{t} &= \alpha(y_{t} / s_{t-m}) + (1 - \alpha)(\ell_{t-1} + \phi b_{t-1})\\
+b_{t} &= \beta^*(\ell_{t} - \ell_{t-1}) + (1 - \beta^*)\phi b_{t-1}       \\
+s_{t} &= \gamma \frac{y_{t}}{(\ell_{t-1} + \phi b_{t-1})} + (1 - \gamma)s_{t-m}
+\end{align*}
+\end{block}
+
+## Your turn
+
+Apply Holt-Winters’ multiplicative method to the Gas data from `aus_production`.
+
+ 1. Why is multiplicative seasonality necessary here?
+ 1. Experiment with making the trend damped.
+ 1. Check that the residuals from the best method look like white noise.
+
+# Innovations state space models
+
+## Exponential smoothing methods
+\fontsize{12}{14}\sf
+
+\begin{block}{}
+\begin{tabular}{ll|ccc}
+& &\multicolumn{3}{c}{\bf Seasonal Component} \\
+\multicolumn{2}{c|}{\bf Trend}& N & A & M\\
+\multicolumn{2}{c|}{\bf Component}  & (None)    & (Additive)  & (Multiplicative)\\
+\cline{3-5} &&&&\\[-0.4cm]
+N & (None) & (N,N) & (N,A) & (N,M)\\
+&&&&\\[-0.4cm]
+A & (Additive) & (A,N) & (A,A) & (A,M)\\
+&&&&\\[-0.4cm]
+A\damped & (Additive damped) & (A\damped,N) & (A\damped,A) & (A\damped,M)
+\end{tabular}
+\end{block}\fontsize{12}{14}\sf
+
+\begin{tabular}{lp{9.7cm}}
+\textcolor[rgb]{0.90,0.,0.00}{(N,N)}:        &Simple exponential smoothing\\
+\textcolor[rgb]{0.90,0.,0.00}{(A,N)}:        &Holt's linear method\\
+\textcolor[rgb]{0.90,0.,0.00}{(A\damped,N)}: &Additive damped trend method\\
+\textcolor[rgb]{0.90,0.,0.00}{(A,A)}:~~ &Additive Holt-Winters' method\\
+\textcolor[rgb]{0.90,0.,0.00}{(A,M)}: &Multiplicative Holt-Winters' method\\
+\textcolor[rgb]{0.90,0.,0.00}{(A\damped,M)}: &Damped multiplicative Holt-Winters' method
+\end{tabular}
+
+\begin{block}{}\fontsize{12}{14}\sf
+There are also multiplicative trend methods (not recommended).
+\end{block}
+
+## ETS models
+\fontsize{11}{12}\sf
+
+\begin{block}{}
+\begin{tabular}{ll|ccc}
+  \multicolumn{2}{l}{\alert{\bf Additive Error}} &        \multicolumn{3}{c}{\bf Seasonal Component}         \\
+          \multicolumn{2}{c|}{\bf Trend}         &         N         &         A         &         M         \\
+        \multicolumn{2}{c|}{\bf Component}       &     ~(None)~      &    (Additive)     & (Multiplicative)  \\ \cline{3-5}
+           &                                     &                   &                   &  \\[-0.3cm]
+  N        & (None)                              &       A,N,N       &       A,N,A       &    A,N,M     \\
+           &                                     &                   &                   &  \\[-0.3cm]
+  A        & (Additive)                          &       A,A,N       &       A,A,A       &    A,A,M     \\
+           &                                     &                   &                   &  \\[-0.3cm]
+  A\damped & (Additive damped)                   &   A,A\damped,N    &   A,A\damped,A    & A,A\damped,M
+\end{tabular}
+\end{block}
+
+\begin{block}{}
+\begin{tabular}{ll|ccc}
+  \multicolumn{2}{l}{\alert{\bf Multiplicative Error}} &     \multicolumn{3}{c}{\bf Seasonal Component}      \\
+             \multicolumn{2}{c|}{\bf Trend}            &      N       &         A         &        M         \\
+           \multicolumn{2}{c|}{\bf Component}          &   ~(None)~   &    (Additive)     & (Multiplicative) \\ \cline{3-5}
+           &                                           &              &                   &  \\[-0.3cm]
+  N        & (None)                                    &    M,N,N     &       M,N,A       &      M,N,M       \\
+           &                                           &              &                   &  \\[-0.3cm]
+  A        & (Additive)                                &    M,A,N     &       M,A,A       &      M,A,M       \\
+           &                                           &              &                   &  \\[-0.3cm]
+  A\damped & (Additive damped)                         & M,A\damped,N &   M,A\damped,A    &   M,A\damped,M
+\end{tabular}
+\end{block}
+
+## Additive error models
+
+\placefig{0}{1.5}{width=12.8cm,trim=0 120 0 0,clip=true}{fig_7_ets_add.pdf}
+
+## Multiplicative error models
+
+\placefig{0}{1.5}{width=12.8cm,trim=0 120 0 0,clip=true}{fig_7_ets_multi.pdf}
+
+## Estimating ETS models
+
+  * Smoothing parameters $\alpha$, $\beta$, $\gamma$ and $\phi$, and the initial states $\ell_0$, $b_0$, $s_0,s_{-1},\dots,s_{-m+1}$ are estimated by maximising the "likelihood" = the probability of the data arising from the specified model.
+  * For models with additive errors equivalent to minimising SSE.
+  * For models with multiplicative errors, \textbf{not} equivalent to minimising SSE.
+
+## Innovations state space models
+\fontsize{12}{14}\sf
+
+Let $\bm{x}_t = (\ell_t, b_t, s_t, s_{t-1}, \dots, s_{t-m+1})$ and
+$\varepsilon_t\stackrel{\mbox{\scriptsize iid}}{\sim}
+\mbox{N}(0,\sigma^2)$.
+\begin{block}{}
+\begin{tabular}{lcl}
+$y_t$ &=& $\underbrace{h(\bm{x}_{t-1})} +
+\underbrace{k(\bm{x}_{t-1})\varepsilon_t}$\\
+&& \hspace*{0.5cm}$\mu_t$ \hspace*{1.45cm} $e_t$ \\[0.2cm]
+$\bm{x}_t$ &=& $f(\bm{x}_{t-1}) +
+g(\bm{x}_{t-1})\varepsilon_t$\\
+\end{tabular}
+\end{block}
+
+Additive errors
+: \mbox{}\vspace*{-0.5cm}\newline
+  $k(x)=1$.\qquad $y_t = \mu_{t} + \varepsilon_t$.
+
+Multiplicative errors
+: \mbox{}\vspace*{-0.5cm}\newline
+  $k(\bm{x}_{t-1}) = \mu_{t}$.\qquad $y_t = \mu_{t}(1 + \varepsilon_t)$.\newline
+  $\varepsilon_t = (y_t - \mu_t)/\mu_t$ is relative error.
+
+## Innovations state space models
+
+\structure{Estimation}\vspace*{0.5cm}
+
+\begin{block}{}
+\begin{align*}
+L^*(\bm\theta,\bm{x}_0) &= n\log\!\bigg(\sum_{t=1}^n \varepsilon^2_t/k^2(\bm{x}_{t-1})\!\bigg) + 2\sum_{t=1}^n \log|k(\bm{x}_{t-1})|\\
+&= -2\log(\text{Likelihood}) + \mbox{constant}
+\end{align*}
+\end{block}
+
+* Estimate parameters $\bm\theta = (\alpha,\beta,\gamma,\phi)$ and
+initial states $\bm{x}_0 = (\ell_0,b_0,s_0,s_{-1},\dots,s_{-m+1})$ by
+minimizing $L^*$.
+
+## Parameter restrictions
+\fontsize{12}{14}\sf
+
+### *Usual* region
+
+  * Traditional restrictions in the methods $0< \alpha,\beta^*,\gamma^*,\phi<1$\newline (equations interpreted as weighted averages).
+  * In models we set $\beta=\alpha\beta^*$ and $\gamma=(1-\alpha)\gamma^*$.
+  * Therefore $0< \alpha <1$, &nbsp;&nbsp; $0 < \beta < \alpha$ &nbsp;&nbsp; and $0< \gamma < 1-\alpha$.
+  * $0.8<\phi<0.98$ --- to prevent numerical difficulties.
+ \pause
+
+### *Admissible* region
+
+  * To prevent observations in the distant past having a continuing effect on current forecasts.
+  * Usually (but not always) less restrictive than the \textit{traditional} region.
+  * For example for ETS(A,N,N): \newline \textit{traditional} $0< \alpha <1$ --- \textit{admissible} is $0< \alpha <2$.
+
+## Model selection
+\fontsize{13}{15}\sf
+
+\begin{block}{Akaike's Information Criterion}
+\[
+\text{AIC} = -2\log(\text{L}) + 2k
+\]
+\end{block}\vspace*{-0.2cm}
+where $L$ is the likelihood and $k$ is the number of parameters initial states estimated in the model.\pause
+
+\begin{block}{Corrected AIC}
+\[
+\text{AIC}_{\text{c}} = \text{AIC} + \frac{2(k+1)(k+2)}{T-k}
+\]
+\end{block}
+which is the AIC corrected (for small sample bias).
+\pause
+\begin{block}{Bayesian Information Criterion}
+\[
+\text{BIC} = \text{AIC} + k(\log(T)-2).
+\]
+\end{block}
+
+## AIC and cross-validation
+
+\Large
+
+\begin{alertblock}{}
+Minimizing the AIC assuming Gaussian residuals is asymptotically equivalent to minimizing one-step time series cross validation MSE.
+\end{alertblock}
+
+## Automatic forecasting
+
+**From Hyndman et al.\ (IJF, 2002):**
+
+* Apply each model that is appropriate to the data.
+Optimize parameters and initial values using MLE (or some other
+criterion).
+* Select best method using AICc:
+* Produce forecasts using best method.
+* Obtain forecast intervals using underlying state space model.
+
+Method performed very well in M3 competition.
+
+## Some unstable models
+
+* Some of the combinations of (Error, Trend, Seasonal) can lead to numerical difficulties; see equations with division by a state.
+* These are: ETS(A,N,M), ETS(A,A,M), ETS(A,A\damped,M).
+* Models with multiplicative errors are useful for strictly positive data, but are not numerically stable with data containing zeros or negative values. In that case only the six fully additive models will be applied.
+
+## Exponential smoothing models
+\fontsize{11}{12}\sf
+
+\begin{block}{}
+\begin{tabular}{ll|ccc}
+  \multicolumn{2}{l}{\alert{\bf Additive Error}} &        \multicolumn{3}{c}{\bf Seasonal Component}         \\
+          \multicolumn{2}{c|}{\bf Trend}         &         N         &         A         &         M         \\
+        \multicolumn{2}{c|}{\bf Component}       &     ~(None)~      &    (Additive)     & (Multiplicative)  \\ \cline{3-5}
+           &                                     &                   &                   &  \\[-0.3cm]
+  N        & (None)                              &       A,N,N       &       A,N,A       &    \st{A,N,M}     \\
+           &                                     &                   &                   &  \\[-0.3cm]
+  A        & (Additive)                          &       A,A,N       &       A,A,A       &    \st{A,A,M}     \\
+           &                                     &                   &                   &  \\[-0.3cm]
+  A\damped & (Additive damped)                   &   A,A\damped,N    &   A,A\damped,A    & \st{A,A\damped,M}
+\end{tabular}
+\end{block}
+
+\begin{block}{}
+\begin{tabular}{ll|ccc}
+  \multicolumn{2}{l}{\alert{\bf Multiplicative Error}} &     \multicolumn{3}{c}{\bf Seasonal Component}      \\
+             \multicolumn{2}{c|}{\bf Trend}            &      N       &         A         &        M         \\
+           \multicolumn{2}{c|}{\bf Component}          &   ~(None)~   &    (Additive)     & (Multiplicative) \\ \cline{3-5}
+           &                                           &              &                   &  \\[-0.3cm]
+  N        & (None)                                    &    M,N,N     &       M,N,A       &      M,N,M       \\
+           &                                           &              &                   &  \\[-0.3cm]
+  A        & (Additive)                                &    M,A,N     &       M,A,A       &      M,A,M       \\
+           &                                           &              &                   &  \\[-0.3cm]
+  A\damped & (Additive damped)                         & M,A\damped,N &   M,A\damped,A    &   M,A\damped,M
+\end{tabular}
+\end{block}
+
+## Example: Australian holiday tourism
+\fontsize{10}{10}\sf
+
+```{r, echo=TRUE}
+fit <- aus_holidays %>% model(ETS(Trips))
+report(fit)
+```
+
+## Example: Australian holiday tourism
+
+Model selected: ETS(M,N,M)
+\begin{align*}
+y_{t} &= \ell_{t-1}s_{t-m}(1 + \varepsilon_t)\\
+\ell_t &= \ell_{t-1}(1 + \alpha \varepsilon_t)\\
+s_t &=  s_{t-m}(1+ \gamma \varepsilon_t).
+\end{align*}
+
+$\hat\alpha=`r format(tidy(fit)$estimate[1],nsmall=4,digits=4)`$,
+and $\hat\gamma=`r format(tidy(fit)$estimate[2],nsmall=3,digits=3, scientific=FALSE)`$.
+
+## Example: Australian holiday tourism
+
+```{r MAMstates, fig.height=3.5,fig.width=6, echo=TRUE, results = "hide"}
+components(fit)
+```
+
+```{r r MAMstates, fig.height=3.5,fig.width=6}
+components(fit) %>%
+  autoplot() +
+  ggtitle("ETS(M,N,M) components")
+```
+
+## Residuals
+\fontsize{16}{18}\sf
+
+### Response residuals
+$$\hat{e}_t = y_t - \hat{y}_{t|t-1}$$
+
+### Innovation residuals
+Additive error model:
+$$\hat\varepsilon_t = y_t - \hat{y}_{t|t-1}$$
+
+Multiplicative error model:
+$$\hat\varepsilon_t = \frac{y_t - \hat{y}_{t|t-1}}{\hat{y}_{t|t-1}}$$
+
+## Example: Australian holiday tourism
+\fontsize{9.5}{12}\sf
+
+```{r, echo = TRUE, results = "hide"}
+residuals(fit)
+residuals(fit, type = "response")
+```
+
+```{r, echo=FALSE}
+residuals(fit) %>%
+  mutate(Type = "Innovation residuals") %>%
+  bind_rows(residuals(fit, type = "response") %>% mutate(Type = "Response residuals")) %>%
+  ggplot(aes(x = Quarter, y = .resid)) +
+  geom_line() +
+  facet_grid(Type ~ ., scales = "free_y") +
+  ylab(NULL)
+```
+
+# Forecasting with exponential smoothing
+
+## Forecasting with ETS models
+
+\structure{Point forecasts:} iterate the equations for $t=T+1,T+2,\dots,T+h$ and set all $\varepsilon_t=0$ for $t>T$.\pause
+
+* Not the same as $\text{E}(y_{t+h} | \bm{x}_t)$ unless trend and seasonality are both additive.
+* Point forecasts for ETS(A,\*,\*) are identical to ETS(M,\*,\*) if the parameters are the same.
+
+## Example: ETS(A,A,N)
+
+\vspace*{-1.3cm}
+
+\begin{align*}
+y_{T+1} &= \ell_T + b_T  + \varepsilon_{T+1}\\
+\hat{y}_{T+1|T} & = \ell_{T}+b_{T}\\
+y_{T+2}         & = \ell_{T+1} + b_{T+1} + \varepsilon_{T+2}\\
+                & =
+                      (\ell_T + b_T + \alpha\varepsilon_{T+1}) +
+                      (b_T + \beta \varepsilon_{T+1}) +
+                      \varepsilon_{T+2} \\
+\hat{y}_{T+2|T} &= \ell_{T}+2b_{T}
+\end{align*}
+etc.
+
+## Example: ETS(M,A,N)
+\fontsize{13}{16}\sf
+
+\vspace*{-1.3cm}
+
+\begin{align*}
+y_{T+1} &= (\ell_T + b_T )(1+ \varepsilon_{T+1})\\
+\hat{y}_{T+1|T} & = \ell_{T}+b_{T}.\\
+y_{T+2}         & = (\ell_{T+1} + b_{T+1})(1 + \varepsilon_{T+2})\\
+                & = \left\{
+                    (\ell_T + b_T) (1+ \alpha\varepsilon_{T+1}) +
+                    \left[b_T + \beta (\ell_T + b_T)\varepsilon_{T+1}\right]
+                    \right\}
+                   (1 + \varepsilon_{T+2}) \\
+\hat{y}_{T+2|T} &= \ell_{T}+2b_{T}
+\end{align*}
+etc.
+
+## Forecasting with ETS models
+
+\structure{Prediction intervals:} can only generated using the models.
+
+  * The prediction intervals will differ between models with additive and multiplicative errors.
+  * Exact formulae for some models.
+  * More general to simulate future sample paths, conditional on the last estimate of the states, and to obtain prediction intervals from the percentiles of these simulated future paths.
+
+## Prediction intervals
+\fontsize{12}{13}\sf\vspace*{-0.2cm}
+
+PI for most ETS models: $\hat{y}_{T+h|T} \pm c \sigma_h$, where $c$ depends on coverage probability and $\sigma_h$ is forecast standard deviation.
+
+\fontsize{10}{12}\sf\vspace*{0.2cm}
+
+\hspace*{-0.8cm}\begin{tabular}{ll}
+\hline
+(A,N,N) & $\sigma_h = \sigma^2\big[1 + \alpha^2(h-1)\big]$\\
+(A,A,N) & $\sigma_h = \sigma^2\Big[1 + (h-1)\big\{\alpha^2 + \alpha\beta h + \frac16\beta^2h(2h-1)\big\}\Big]$\\
+(A,A$_d$,N) & $\sigma_h = \sigma^2\biggl[1 + \alpha^2(h-1) + \frac{\beta\phi h}{(1-\phi)^2} \left\{2\alpha(1-\phi) +\beta\phi\right\}$\\
+      & \hspace*{1.5cm}$\mbox{} - \frac{\beta\phi(1-\phi^h)}{(1-\phi)^2(1-\phi^2)} \left\{ 2\alpha(1-\phi^2)+ \beta\phi(1+2\phi-\phi^h)\right\}\biggr]$\\
+(A,N,A) &              $\sigma_h = \sigma^2\Big[1 + \alpha^2(h-1) + \gamma k(2\alpha+\gamma)\Big]$\\
+(A,A,A) &              $\sigma_h = \sigma^2\Big[1 + (h-1)\big\{\alpha^2 + \alpha\beta h + \frac16\beta^2h(2h-1)\big\} + \gamma k \big\{2\alpha+ \gamma + \beta m (k+1)\big\} \Big]$\\
+(A,A$_d$,A) &  $\sigma_h = \sigma^2\biggl[1 + \alpha^2(h-1) +\frac{\beta\phi h}{(1-\phi)^2} \left\{2\alpha(1-\phi)  + \beta\phi \right\}$\\
+  & \hspace*{1.5cm}$\mbox{} - \frac{\beta\phi(1-\phi^h)}{(1-\phi)^2(1-\phi^2)} \left\{ 2\alpha(1-\phi^2)+ \beta\phi(1+2\phi-\phi^h)\right\}$ \\
+  & \hspace*{1.5cm}$\mbox{} + \gamma k(2\alpha+\gamma)  + \frac{2\beta\gamma\phi}{(1-\phi)(1-\phi^m)}\left\{k(1-\phi^m) - \phi^m(1-\phi^{mk})\right\}\biggr]$
+\end{tabular}
+
+## Example: Corticosteroid drug sales
+
+\fontsize{10}{10}\sf
+
+```{r h02-plot, echo = TRUE}
+h02 <- tsibbledata::PBS %>%
+  filter(ATC2 == "H02") %>%
+  summarise(Cost = sum(Cost))
+h02 %>%
+  autoplot(Cost)
+```
+
+## Example: Corticosteroid drug sales
+\fontsize{8}{8}\sf
+
+```{r, echo=TRUE}
+h02 %>% model(ETS(Cost)) %>% report
+```
+
+## Example: Corticosteroid drug sales
+\fontsize{8}{8}\sf
+
+```{r, echo=TRUE}
+h02 %>% model(ETS(Cost ~ error("A") + trend("A") + season("A"))) %>% report
+```
+
+## Example: Corticosteroid drug sales
+
+\fontsize{10}{10}\sf
+```{r, echo=TRUE, fig.height=4}
+h02 %>% model(ETS(Cost)) %>% forecast() %>% autoplot(h02)
+```
+
+## Example: Corticosteroid drug sales
+\fontsize{11}{13}\sf
+
+```{r, echo=TRUE, results = "hide"}
+h02 %>%
+  model(
+    auto = ETS(Cost),
+    AAA = ETS(Cost ~ error("A") + trend("A") + season("A"))
+  ) %>%
+  accuracy()
+```
+
+```{r}
+h02 %>%
+  model(
+    auto = ETS(Cost),
+    AAA = ETS(Cost ~ error("A") + trend("A") + season("A"))
+  ) %>%
+  accuracy() %>%
+  transmute(Model = .model, ME, MAE, RMSE, MAPE, MASE) %>%
+  knitr::kable(booktabs = TRUE)
+```
+
+## Your turn
+
+* Use `ETS()` on some of these series:\vspace*{0.2cm}
+
+> `tourism`, `gafa_stock`, `pelt`
+
+* Does it always give good forecasts?
+
+* Find an example where it does not work well. Can you figure out why?
+
+# Stationarity and differencing
+
+## Stationarity
+
+\begin{block}{Definition}
+If $\{y_t\}$ is a stationary time series, then for all $s$, the distribution of $(y_t,\dots,y_{t+s})$ does not depend on $t$.
+\end{block}\pause
+
+A **stationary series** is:
+
+* roughly horizontal
+* constant variance
+* no patterns predictable in the long-term
+
+## Stationary?
+
+```{r}
+gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) == 2018) %>%
+  autoplot(Close) + ylab("Google closing stock price") + xlab("Day")
+```
+
+## Stationary?
+
+```{r}
+gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) == 2018) %>%
+  autoplot(difference(Close)) + ylab("Google closing stock price") + xlab("Day")
+```
+
+## Stationary?
+
+```{r}
+as_tsibble(fma::strikes) %>% autoplot(value) +
+  ylab("Number of strikes") + xlab("Year")
+```
+
+## Stationary?
+
+```{r}
+as_tsibble(fma::hsales) %>% autoplot(value) + xlab("Year") + ylab("Total sales") +
+  ggtitle("Sales of new one-family houses, USA")
+```
+
+## Stationary?
+```{r}
+as_tsibble(fma::eggs) %>% autoplot(value) + xlab("Year") + ylab("$") +
+  ggtitle("Price of a dozen eggs in 1993 dollars")
+```
+
+## Stationary?
+```{r}
+aus_livestock %>%
+  filter(
+    Animal == "Pigs",
+    State == "Victoria",
+    year(Month) >= 2010
+  ) %>%
+  autoplot(Count/1e3) + xlab("Year") + ylab("thousands") +
+  ggtitle("Number of pigs slaughtered in Victoria")
+```
+
+## Stationary?
+
+```{r}
+pelt %>% autoplot(Lynx) + xlab("Year") + ylab("Number trapped") +
+  ggtitle("Annual Canadian Lynx Trappings")
+```
+
+## Stationary?
+
+```{r}
+aus_production %>% filter_index("1992" ~ .) %>%
+  autoplot(Beer) + xlab("Year") + ylab("megalitres") +
+  ggtitle("Australian quarterly beer production")
+```
+
+## Stationarity
+
+\begin{block}{Definition}
+If $\{y_t\}$ is a stationary time series, then for all $s$, the distribution of $(y_t,\dots,y_{t+s})$ does not depend on $t$.
+\end{block}\pause\vspace*{0.4cm}
+
+Transformations help to **stabilize the variance**.
+
+For ARIMA modelling, we also need to **stabilize the mean**.
+
+## Non-stationarity in the mean
+\alert{Identifying non-stationary series}
+
+* time plot.
+* The ACF of stationary data drops to zero relatively quickly
+* The ACF of non-stationary data decreases slowly.
+* For non-stationary data, the value of $r_1$ is often large and positive.
+
+## Example: Google stock price
+
+```{r}
+gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) == 2018) %>%
+  autoplot(Close) + ylab("Closing stock price ($USD)") + xlab("Day")
+```
+
+## Example: Google stock price
+
+```{r}
+google_2018 <- gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) == 2018) %>%
+  mutate(trading_day = row_number()) %>%
+  update_tsibble(index = trading_day, regular = TRUE)
+google_2018 %>%
+  ACF(Close) %>% autoplot()
+```
+
+## Example: Google stock price
+
+```{r}
+gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) == 2018) %>%
+  autoplot(difference(Close)) +
+  ylab("Change in Google closing stock price ($USD)") + xlab("Day")
+```
+
+## Example: Google stock price
+
+```{r}
+google_2018 %>% ACF(difference(Close)) %>% autoplot()
+```
+
+## Differencing
+
+* Differencing helps to **stabilize the mean**.
+* The differenced series is the *change* between each observation in the original series: $y'_t = y_t - y_{t-1}$.
+* The differenced series will have only $T-1$ values since it is not possible to calculate a difference $y_1'$ for the first observation.
+
+## Second-order differencing
+
+Occasionally the differenced data will not appear stationary and it may be necessary to difference the data a second time:\pause
+\begin{align*}
+y''_{t} & = y'_{t} - y'_{t - 1} \\
+        & = (y_t - y_{t-1}) - (y_{t-1}-y_{t-2})\\
+        & = y_t - 2y_{t-1} +y_{t-2}.
+\end{align*}\pause
+
+* $y_t''$ will have $T-2$ values.
+* In practice, it is almost never necessary to go beyond second-order differences.
+
+## Seasonal differencing
+
+A seasonal difference is the difference between an observation and the corresponding observation from the previous year.\pause
+$$
+ y'_t = y_t - y_{t-m}
+$$
+where $m=$ number of seasons.\pause
+
+* For monthly data $m=12$.
+* For quarterly data $m=4$.
+
+## Electricity production
+\fontsize{11}{13}\sf
+
+```{r, echo=TRUE, fig.height=3.5}
+usmelec %>% autoplot(
+  Generation
+)
+```
+
+## Electricity production
+\fontsize{11}{13}\sf
+
+```{r, echo=TRUE, fig.height=3.5}
+usmelec %>% autoplot(
+  log(Generation)
+)
+```
+
+## Electricity production
+\fontsize{11}{13}\sf
+
+```{r, echo=TRUE, fig.height=3.5}
+usmelec %>% autoplot(
+  log(Generation) %>% difference(12)
+)
+```
+
+## Electricity production
+\fontsize{11}{13}\sf
+
+```{r, echo=TRUE, fig.height=3.5}
+usmelec %>% autoplot(
+  log(Generation) %>% difference(12) %>% difference()
+)
+```
+
+## Electricity production
+
+* Seasonally differenced series is closer to being stationary.
+* Remaining non-stationarity can be removed with further first difference.
+
+If $y'_t = y_t - y_{t-12}$ denotes seasonally differenced series, then twice-differenced series is
+
+\begin{block}{}
+\begin{align*}
+y^*_t &= y'_t - y'_{t-1} \\
+      &= (y_t - y_{t-12}) - (y_{t-1} - y_{t-13}) \\
+      &= y_t - y_{t-1} - y_{t-12} + y_{t-13}\: .
+\end{align*}
+\end{block}\vspace*{10cm}
+
+## Seasonal differencing
+
+When both seasonal and first differences are applied\dots\pause
+
+* it makes no difference which is done first---the result will be the same.
+* If seasonality is strong, we recommend that seasonal differencing be done first because sometimes the resulting series will be stationary and there will be no need for further first difference.\pause
+
+It is important that if differencing is used, the differences are interpretable.
+
+## Interpretation of differencing
+
+* first differences are the change between **one observation and the next**;
+* seasonal differences are the change between **one year to the next**.
+\pause
+
+But taking lag 3 differences for yearly data, for example, results in a model which cannot be sensibly interpreted.
+
+## Unit root tests
+
+\alert{Statistical tests to determine the required order of differencing.}
+
+  1. Augmented Dickey Fuller test: null hypothesis is that the data are non-stationary and non-seasonal.
+  2. Kwiatkowski-Phillips-Schmidt-Shin (KPSS) test: null hypothesis is that the data are stationary and non-seasonal.
+  3. Other tests available for seasonal data.
+
+## KPSS test
+\fontsize{9}{10}\sf
+
+```{r, echo=TRUE}
+google_2018 %>%
+  features(Close, unitroot_kpss)
+```
+
+\pause
+
+```{r, echo=TRUE}
+google_2018 %>%
+  features(Close, unitroot_ndiffs)
+```
+
+## Automatically selecting differences
+
+STL decomposition: $y_t = T_t+S_t+R_t$
+
+Seasonal strength $F_s = \max\big(0, 1-\frac{\text{Var}(R_t)}{\text{Var}(S_t+R_t)}\big)$
+
+If $F_s > 0.64$, do one seasonal difference.
+
+\fontsize{9}{10}\sf
+
+```{r, echo=TRUE}
+usmelec %>% mutate(log_gen = log(Generation)) %>%
+  features(log_gen, list(unitroot_nsdiffs, feat_stl))
+```
+
+## Automatically selecting differences
+
+\fontsize{9}{10}\sf
+
+```{r, echo=TRUE}
+usmelec %>% mutate(log_gen = log(Generation)) %>%
+  features(log_gen, unitroot_nsdiffs)
+usmelec %>% mutate(d_log_gen = difference(log(Generation), 12)) %>%
+  features(d_log_gen, unitroot_ndiffs)
+```
+
+## Your turn
+
+For the `tourism` dataset, compute the total number of trips and find an appropriate differencing (after transformation if necessary) to obtain stationary data.
+
+## Backshift notation
+
+A very useful notational device is the backward shift operator, $B$, which is used as follows:
+$$
+  B y_{t} = y_{t - 1}
+$$\pause
+In other words, $B$, operating on $y_{t}$, has the effect of **shifting the data back one period**. \pause
+Two applications of $B$ to $y_{t}$ **shifts the data back two periods**:
+$$
+  B(By_{t}) = B^{2}y_{t} = y_{t-2}
+$$\pause
+For monthly data, if we wish to shift attention to "the same month last year", then $B^{12}$ is used, and the notation is $B^{12}y_{t} = y_{t-12}$.
+
+## Backshift notation
+
+The backward shift operator is convenient for describing the process of *differencing*. \pause
+A first difference can be written as
+$$
+  y'_{t} = y_{t} - y_{t-1} = y_t - By_{t} = (1 - B)y_{t}
+$$\pause
+Note that a first difference is represented by $(1 - B)$.\pause
+
+Similarly, if second-order differences (i.e., first differences of first differences) have to be computed, then:
+\[
+  y''_{t} = y_{t} - 2y_{t - 1} + y_{t - 2} = (1 - B)^{2} y_{t}
+\]
+
+## Backshift notation
+
+* Second-order difference is denoted $(1- B)^{2}$.
+* *Second-order difference* is not the same as a *second difference*, which would be denoted $1- B^{2}$;
+* In general, a $d$th-order difference can be written as
+$$
+  (1 - B)^{d} y_{t}
+$$
+* A seasonal difference followed by a first difference can be written as
+$$
+  (1-B)(1-B^m)y_t
+$$
+
+## Backshift notation
+
+The "backshift" notation is convenient because the terms can be multiplied together to see the combined effect.
+\begin{align*}
+  (1-B)(1-B^m)y_t & = (1 - B - B^m + B^{m+1})y_t \\
+                  & = y_t-y_{t-1}-y_{t-m}+y_{t-m-1}.
+\end{align*}\pause
+For monthly data, $m=12$ and we obtain the same result as earlier.
+
+# Non-seasonal ARIMA models
+
+## Autoregressive models
+
+\begin{block}{Autoregressive (AR) models:}
+$$
+  y_{t} = c + \phi_{1}y_{t - 1} + \phi_{2}y_{t - 2} + \cdots + \phi_{p}y_{t - p} + \varepsilon_{t},
+$$
+where $\varepsilon_t$ is white noise. This is a multiple regression with \textbf{lagged values} of $y_t$ as predictors.
+\end{block}
+
+```{r arp, echo=FALSE, fig.height=3}
+set.seed(1)
+p1 <- tsibble(idx = seq_len(100), sim = 10 + arima.sim(list(ar = -0.8), n = 100), index = idx) %>%
+  autoplot(sim) + ylab("") + ggtitle("AR(1)")
+p2 <- tsibble(idx = seq_len(100), sim = 20 + arima.sim(list(ar = c(1.3, -0.7)), n = 100), index = idx) %>%
+  autoplot(sim) + ylab("") + ggtitle("AR(2)")
+gridExtra::grid.arrange(p1,p2,nrow=1)
+```
+
+## AR(1) model
+
+\begin{block}{}
+\centerline{$y_{t} = 2 -0.8 y_{t - 1} + \varepsilon_{t}$}
+\end{block}
+\rightline{$\varepsilon_t\sim N(0,1)$,\quad $T=100$.}
+
+```{r, echo=FALSE}
+p1
+```
+
+## AR(1) model
+
+\begin{block}{}
+  \centerline{$y_{t} = c + \phi_1 y_{t - 1} + \varepsilon_{t}$}
+\end{block}
+
+* When $\phi_1=0$, $y_t$ is **equivalent to WN**
+* When $\phi_1=1$ and $c=0$, $y_t$ is **equivalent to a RW**
+* When $\phi_1=1$ and $c\ne0$, $y_t$ is **equivalent to a RW with drift**
+* When $\phi_1<0$, $y_t$ tends to **oscillate between positive and negative values**.
+
+## AR(2) model
+
+\begin{block}{}
+  \centerline{$y_t = 8 + 1.3y_{t-1} - 0.7 y_{t-2} + \varepsilon_t$}
+\end{block}
+\rightline{$\varepsilon_t\sim N(0,1)$, \qquad $T=100$.}
+
+```{r}
+p2
+```
+
+## Stationarity conditions
+\fontsize{14}{15}\sf
+
+We normally restrict autoregressive models to stationary data, and then some constraints on the values of the parameters are required.
+
+\begin{block}{General condition for stationarity}
+  Complex roots of $1-\phi_1 z - \phi_2 z^2 - \dots - \phi_pz^p$ lie outside the unit circle on the complex plane.
+\end{block}\pause
+
+* For $p=1$: $-1<\phi_1<1$.
+* For $p=2$:\newline $-1<\phi_2<1\qquad \phi_2+\phi_1 < 1 \qquad \phi_2 -\phi_1 < 1$.
+* More complicated conditions hold for $p\ge3$.
+* Estimation software takes care of this.
+
+## Moving Average (MA) models
+
+\begin{block}{Moving Average (MA) models:}
+$$
+  y_{t} = c + \varepsilon_t + \theta_{1}\varepsilon_{t - 1} + \theta_{2}\varepsilon_{t - 2} + \cdots + \theta_{q}\varepsilon_{t - q},
+$$
+where $\varepsilon_t$ is white noise.
+This is a multiple regression with \textbf{past \emph{errors}} as predictors. \emph{Don't confuse this with moving average smoothing!}
+\end{block}
+
+```{r maq, fig.height=2.5}
+set.seed(2)
+p1 <- tsibble(idx = seq_len(100), sim = 20 + arima.sim(list(ma = 0.8), n = 100), index = idx) %>%
+  autoplot(sim) + ylab("") + ggtitle("MA(1)")
+p2 <- tsibble(idx = seq_len(100), sim = arima.sim(list(ma = c(-1, +0.8)), n = 100), index = idx) %>%
+  autoplot(sim) + ylab("") + ggtitle("MA(2)")
+
+gridExtra::grid.arrange(p1,p2,nrow=1)
+```
+
+## MA(1) model
+
+\begin{block}{}
+  \centerline{$y_t = 20 + \varepsilon_t + 0.8 \varepsilon_{t-1}$}
+\end{block}
+\rightline{$\varepsilon_t\sim N(0,1)$,\quad $T=100$.}
+
+```{r}
+p1
+```
+
+## MA(2) model
+
+\begin{block}{}
+  \centerline{$y_t = \varepsilon_t -\varepsilon_{t-1} + 0.8 \varepsilon_{t-2}$}
+\end{block}
+\rightline{$\varepsilon_t\sim N(0,1)$,\quad $T=100$.}
+
+```{r}
+p2
+```
+
+## MA($\infty$) models
+
+It is possible to write any stationary AR($p$) process as an MA($\infty$) process.
+
+**Example: AR(1)**
+\begin{align*}
+y_t &= \phi_1y_{t-1} + \varepsilon_t\\
+&= \phi_1(\phi_1y_{t-2} + \varepsilon_{t-1}) + \varepsilon_t\\
+&= \phi_1^2y_{t-2} + \phi_1 \varepsilon_{t-1} + \varepsilon_t\\
+&= \phi_1^3y_{t-3} + \phi_1^2\varepsilon_{t-2} + \phi_1 \varepsilon_{t-1} + \varepsilon_t\\
+&\dots
+\end{align*}\pause
+Provided $-1 < \phi_1 < 1$:
+\[
+  y_t = \varepsilon_t + \phi_1 \varepsilon_{t-1} + \phi_1^2 \varepsilon_{t-2} + \phi_1^3 \varepsilon_{t-3} + \cdots
+\]
+
+## Invertibility
+
+* Any MA($q$) process can be written as an AR($\infty$) process if we impose some constraints on the MA parameters.
+* Then the MA model is called "invertible".
+* Invertible models have some mathematical properties that make them easier to use in practice.
+* Invertibility of an ARIMA model is equivalent to forecastability of an ETS model.
+
+## Invertibility
+
+\begin{block}{General condition for invertibility}
+  Complex roots of $1+\theta_1 z + \theta_2 z^2 + \dots + \theta_qz^q$ lie outside the unit circle on the complex plane.
+\end{block}\pause
+
+* For $q=1$: $-1<\theta_1<1$.
+* For $q=2$:\newline $-1<\theta_2<1\qquad \theta_2+\theta_1 >-1 \qquad \theta_1 -\theta_2 < 1$.
+* More complicated conditions hold for $q\ge3$.
+* Estimation software takes care of this.
+
+## ARIMA models
+
+\begin{block}{Autoregressive Moving Average models:}
+\begin{align*}
+  y_{t} &= c + \phi_{1}y_{t - 1} + \cdots + \phi_{p}y_{t - p} \\
+        & \hspace*{2.4cm}\text{} + \theta_{1}\varepsilon_{t - 1} + \cdots + \theta_{q}\varepsilon_{t - q} + \varepsilon_{t}.
+\end{align*}
+\end{block}\pause
+
+* Predictors include both **lagged values of $y_t$ and lagged errors.**
+* Conditions on coefficients ensure stationarity.
+* Conditions on coefficients ensure invertibility.
+\pause
+
+### Autoregressive Integrated Moving Average models
+* Combine ARMA model with **differencing**.
+* $(1-B)^d y_t$ follows an ARMA model.
+
+## ARIMA models
+
+\alert{Autoregressive Integrated Moving Average models}
+\begin{block}{ARIMA($p, d, q$) model}
+\begin{tabular}{rl}
+AR:& $p =$ order of the autoregressive part\\
+I: & $d =$ degree of first differencing involved\\
+MA:& $q =$ order of the moving average part.
+\end{tabular}
+\end{block}
+
+* White noise model: ARIMA(0,0,0)
+* Random walk: ARIMA(0,1,0) with no constant
+* Random walk with drift: ARIMA(0,1,0) with \rlap{const.}
+* AR($p$): ARIMA($p$,0,0)
+* MA($q$): ARIMA(0,0,$q$)
+
+## Backshift notation for ARIMA
+
+* ARMA model:\vspace*{-1cm}\newline
+\parbox{12cm}{\small\begin{align*}
+\hspace*{-1cm}
+y_{t} &= c + \phi_{1}By_{t} + \cdots + \phi_pB^py_{t}
+           + \varepsilon_{t} + \theta_{1}B\varepsilon_{t} + \cdots + \theta_qB^q\varepsilon_{t} \\
+\hspace*{-1cm} \text{or}\quad
+      & (1-\phi_1B - \cdots - \phi_p B^p) y_t = c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t
+\end{align*}}
+
+* ARIMA(1,1,1) model:\vspace*{-0.5cm}
+
+\[
+\begin{array}{c c c c}
+(1 - \phi_{1} B) & (1 - B) y_{t} &= &c + (1 + \theta_{1} B) \varepsilon_{t}\\
+{\uparrow} & {\uparrow} & &{\uparrow}\\
+{\text{AR(1)}} & {\text{First}} &  &{\text{MA(1)}}\\
+& {\hbox to 0cm{\hss\text{difference}\hss}}\\
+\end{array}
+\]\pause
+Written out:
+$$
+  y_t = c + y_{t-1} + \phi_1 y_{t-1}- \phi_1 y_{t-2} + \theta_1\varepsilon_{t-1} + \varepsilon_t
+$$
+
+## R model
+
+\fontsize{13}{16}\sf
+
+\begin{block}{Intercept form}
+  \centerline{$(1-\phi_1B - \cdots - \phi_p B^p) y_t' = c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t$}
+\end{block}
+
+\begin{block}{Mean form}
+  \centerline{$(1-\phi_1B - \cdots - \phi_p B^p)(y_t' - \mu) = (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t$}
+\end{block}
+
+ * $y_t' = (1-B)^d y_t$
+ * $\mu$ is the mean of $y_t'$.
+ * $c = \mu(1-\phi_1 - \cdots - \phi_p )$.
+ * R uses mean form
+ * fable uses intercept form
+
+## Australian household expenditure
+
+\fontsize{10}{10}\sf
+
+```{r, eval = FALSE, echo = TRUE}
+us_change <- read_csv(
+  "https://otexts.com/fpp3/extrafiles/us_change.csv") %>%
+  mutate(Time = yearquarter(Time)) %>%
+  as_tsibble(index = Time)
+```
+
+```{r}
+us_change %>% autoplot(Consumption) +
+  xlab("Year") +
+  ylab("Quarterly percentage change") +
+  ggtitle("US consumption")
+```
+
+## US personal consumption
+\fontsize{9}{10}\sf
+
+```{r, echo=TRUE}
+fit <- us_change %>% model(arima = ARIMA(Consumption ~ PDQ(0,0,0)))
+report(fit)
+```
+
+\pause\vfill
+
+```{r}
+if(!grepl("ARIMA\\(1,0,3\\)", format(fit$arima)))
+  warning("Needs fixing")
+```
+
+### ARIMA(1,0,3) model:
+\centerline{$
+  y_t = `r format(tidy(fit)$estimate[5], nsmall=3, digits=3)`
+      + `r format(tidy(fit)$estimate[1], nsmall=3, digits=3)`y_{t-1}
+      + `r format(tidy(fit)$estimate[2], nsmall=3, digits=3)` \varepsilon_{t-1}
+      + `r format(tidy(fit)$estimate[3], nsmall=3, digits=3)` \varepsilon_{t-2}
+      + `r format(tidy(fit)$estimate[4], nsmall=3, digits=3)` \varepsilon_{t-2}
+      + \varepsilon_{t},
+$}
+where $\varepsilon_t$ is white noise with a standard deviation of $`r format(sqrt(glance(fit)$sigma2), nsmall=3, digits=3)` = \sqrt{`r format(glance(fit)$sigma2, nsmall=3, digits=3)`}$.
+
+## US personal consumption
+\fontsize{12}{15}\sf
+
+```{r, echo=TRUE, fig.height=3.8}
+fit %>% forecast(h=10) %>%
+  autoplot(slice(us_change, (n()-80):n()))
+```
+
+## Understanding ARIMA models
+\fontsize{14}{16}\sf
+
+* If $c=0$ and $d=0$, the long-term forecasts will go to zero.
+* If $c=0$ and $d=1$, the long-term forecasts will go to a non-zero constant.
+* If $c=0$ and $d=2$, the long-term forecasts will follow a straight line.
+
+* If $c\ne0$ and $d=0$, the long-term forecasts will go to the mean of the data.
+* If $c\ne0$ and $d=1$, the long-term forecasts will follow a straight line.
+* If $c\ne0$ and $d=2$, the long-term forecasts will follow a quadratic trend.
+
+## Understanding ARIMA models
+\fontsize{14}{15.5}\sf
+
+### Forecast variance and $d$
+  * The higher the value of $d$, the more rapidly the prediction intervals increase in size.
+  * For $d=0$, the long-term forecast standard deviation will go to the standard deviation of the historical data.
+
+### Cyclic behaviour
+  * For cyclic forecasts, $p\ge2$ and some restrictions on coefficients are required.
+  * If $p=2$, we need $\phi_1^2+4\phi_2<0$. Then average cycle of length
+\[
+  (2\pi)/\left[\text{arc cos}(-\phi_1(1-\phi_2)/(4\phi_2))\right].
+\]
+
+# Estimation and order selection
+
+## Maximum likelihood estimation
+
+Having identified the model order, we need to estimate the parameters $c$, $\phi_1,\dots,\phi_p$, $\theta_1,\dots,\theta_q$.\pause
+
+* MLE is very similar to least squares estimation obtained by minimizing
+$$
+  \sum_{t-1}^T e_t^2
+$$
+* The `ARIMA()` model allows CLS or MLE estimation.
+* Non-linear optimization must be used in either case.
+* Different software will give different estimates.
+
+## Partial autocorrelations
+
+\fontsize{13}{14}\sf
+
+\alert{Partial autocorrelations} measure relationship\newline between $y_{t}$ and $y_{t - k}$, when the effects of other time lags --- $1, 2, 3, \dots, k - 1$ --- are removed.\pause
+\begin{block}{}
+\begin{align*}
+\alpha_k &= \text{$k$th partial autocorrelation coefficient}\\
+         &= \text{equal to the estimate of $\phi_k$ in regression:}\\
+         & \hspace*{0.8cm} y_t = c + \phi_1 y_{t-1} + \phi_2 y_{t-2} + \dots + \phi_k y_{t-k}.
+\end{align*}
+\end{block}\pause
+
+* Varying number of terms on RHS gives $\alpha_k$ for different values of $k$.
+* There are more efficient ways of calculating $\alpha_k$.
+* $\alpha_1=\rho_1$
+* same critical values of $\pm 1.96/\sqrt{T}$ as for ACF.
+
+## Example: Mink trapping
+
+```{r}
+mink <- as_tsibble(fma::mink)
+mink %>% autoplot(value) +
+  xlab("Year") +
+  ylab("Minks trapped (thousands)") +
+  ggtitle("Annual number of minks trapped")
+```
+
+## Example: Mink trapping
+
+```{r}
+p1 <- mink %>% ACF(value) %>% autoplot()
+p2 <- mink %>% PACF(value) %>% autoplot()
+gridExtra::grid.arrange(p1,p2,nrow=1)
+```
+
+
+## Example: Mink trapping
+
+```{r, echo=TRUE}
+mink %>% gg_tsdisplay(value)
+```
+
+
+## ACF and PACF interpretation
+
+**AR(1)**
+\begin{align*}
+\hspace*{1cm}
+  \rho_k &= \phi_1^k\qquad\text{for $k=1,2,\dots$};\\
+\alpha_1 &= \phi_1 \qquad\alpha_k = 0\qquad\text{for $k=2,3,\dots$}.
+\end{align*}
+
+So we have an AR(1) model when
+
+  * autocorrelations exponentially decay
+  * there is a single significant partial autocorrelation.
+
+## ACF and PACF interpretation
+
+**AR($p$)**
+
+  * ACF dies out in an exponential or damped sine-wave manner
+  * PACF has all zero spikes beyond the $p$th spike
+
+So we have an AR($p$) model when
+
+  * the ACF is exponentially decaying or sinusoidal
+  * there is a significant spike at lag $p$ in PACF, but none beyond $p$
+
+## ACF and PACF interpretation
+
+**MA(1)**
+\begin{align*}
+\hspace*{1cm}\rho_1 &= \theta_1\qquad \rho_k = 0\qquad\text{for $k=2,3,\dots$};\\
+\alpha_k &= -(-\theta_1)^k
+\end{align*}
+
+So we have an MA(1) model when
+
+ * the PACF is exponentially decaying and
+ * there is a single significant spike in ACF
+
+## ACF and PACF interpretation
+
+**MA($q$)**
+
+ * PACF dies out in an exponential or damped sine-wave manner
+ * ACF has all zero spikes beyond the $q$th spike
+
+So we have an MA($q$) model when
+
+  * the PACF is exponentially decaying or sinusoidal
+  * there is a significant spike at lag $q$ in ACF, but none beyond $q$
+
+
+## Information criteria
+
+\alert{Akaike's Information Criterion (AIC):}
+\centerline{$\text{AIC} = -2 \log(L) + 2(p+q+k+1),$}
+where $L$ is the likelihood of the data,\newline
+$k=1$ if $c\ne0$ and $k=0$ if $c=0$.\pause\vspace*{0.2cm}
+
+\alert{Corrected AIC:}
+\centerline{$\text{AICc} = \text{AIC} + \frac{2(p+q+k+1)(p+q+k+2)}{T-p-q-k-2}.$}\pause\vspace*{0.2cm}
+
+\alert{Bayesian Information Criterion:}
+\centerline{$\text{BIC} = \text{AIC} + [\log(T)-2](p+q+k-1).$}
+\pause\vspace*{-0.2cm}
+\begin{block}{}Good models are obtained by minimizing either the AIC, \text{AICc}\ or BIC\@. Our preference is to use the \text{AICc}.\end{block}
+
+# ARIMA modelling in R
+
+## How does ARIMA() work?
+
+\begin{block}{A non-seasonal ARIMA process}
+\[
+\phi(B)(1-B)^dy_{t} = c + \theta(B)\varepsilon_t
+\]
+Need to select appropriate orders: \alert{$p,q, d$}
+\end{block}
+
+\alert{Hyndman and Khandakar (JSS, 2008) algorithm:}
+
+  * Select no.\ differences \alert{$d$} and \alert{$D$} via KPSS test and seasonal strength measure.
+  * Select \alert{$p,q$} by minimising AICc.
+  * Use stepwise search to traverse model space.
+
+## How does ARIMA() work?
+\fontsize{12}{12}\sf
+
+\begin{block}{}
+\centerline{$\text{AICc} = -2 \log(L) + 2(p+q+k+1)\left[1 +
+\frac{(p+q+k+2)}{T-p-q-k-2}\right].$}
+where $L$ is the maximised likelihood fitted to the \textit{differenced} data,
+$k=1$ if $c\neq 0$ and $k=0$ otherwise.
+\end{block}\pause
+
+Step1:
+: Select current model (with smallest AICc) from:\newline
+ARIMA$(2,d,2)$\newline
+ARIMA$(0,d,0)$\newline
+ARIMA$(1,d,0)$\newline
+ARIMA$(0,d,1)$
+\pause\vspace*{-0.1cm}
+
+Step 2:
+: Consider variations of current model:
+
+    * vary one of $p,q,$ from current model by $\pm1$;
+    * $p,q$ both vary from current model by $\pm1$;
+    * Include/exclude $c$ from current model.
+
+  Model with lowest AICc becomes current model.
+
+\alert{Repeat Step 2 until no lower AICc can be found.}
+
+## Choosing your own model
+\fontsize{12}{15}\sf
+
+```{r, echo=TRUE, fig.height=4}
+web_usage <- as_tsibble(WWWusage)
+web_usage %>% gg_tsdisplay(value)
+```
+
+## Choosing your own model
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE, fig.height=4}
+web_usage %>% gg_tsdisplay(difference(value))
+```
+
+## Choosing your own model
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE, fig.height=4}
+fit <- web_usage %>% model(
+  arima = ARIMA(value ~ pdq(3, 1, 0)))
+report(fit)
+```
+
+## Choosing your own model
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE, fig.height=4}
+web_usage %>% model(ARIMA(value ~ pdq(d=1))) %>% report()
+```
+
+## Choosing your own model
+\fontsize{11}{12}\sf
+
+```{r internettryharder, echo=TRUE, fig.height=4}
+web_usage %>%
+  model(ARIMA(value ~ pdq(d=1), stepwise = FALSE,
+    approximation = FALSE)) %>% report()
+```
+
+## Choosing your own model
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE, fig.height=4}
+augment(fit) %>%
+  gg_tsdisplay(.resid, plot_type = "hist")
+```
+
+## Choosing your own model
+\fontsize{11}{12}\sf
+
+```{r, echo = TRUE}
+augment(fit) %>%
+  features(.resid, ljung_box, lag = 10, dof = 3)
+```
+
+## Choosing your own model
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE, fig.height=4}
+fit %>% forecast(h = 10) %>%
+  autoplot(web_usage)
+```
+
+## Modelling procedure with `ARIMA`
+\fontsize{12}{13}\sf
+
+1. Plot the data. Identify any unusual observations.
+2. If necessary, transform the data (using a Box-Cox transformation) to stabilize the variance.
+3. If the data are non-stationary: take first differences of the data until the data are stationary.
+4. Examine the ACF/PACF: Is an AR($p$) or MA($q$) model appropriate?
+5. Try your chosen model(s), and use the \text{AICc} to search for a better model.
+6. Check the residuals from your chosen model by plotting the ACF of the residuals, and doing a portmanteau test of the residuals. If they do not look like white noise, try a modified model.
+7. Once the residuals look like white noise, calculate forecasts.
+
+## Automatic modelling procedure with `ARIMA`
+\fontsize{12}{13}\sf
+
+1. Plot the data. Identify any unusual observations.
+2. If necessary, transform the data (using a Box-Cox transformation) to stabilize the variance.
+
+\vspace*{1.15cm}
+
+3. Use `ARIMA` to automatically select a model.
+
+\vspace*{1.15cm}
+
+6. Check the residuals from your chosen model by plotting the ACF of the residuals, and doing a portmanteau test of the residuals. If they do not look like white noise, try a modified model.
+7. Once the residuals look like white noise, calculate forecasts.
+
+## Modelling procedure
+
+\centerline{\includegraphics[height=8.cm]{Figure-8-10}}
+
+## \large Seasonally adjusted electrical equipment
+\fontsize{11}{12}\sf
+
+```{r ee1, fig.height=3.3, echo=TRUE}
+elecequip <- as_tsibble(fpp2::elecequip)
+dcmp <- elecequip %>%
+  STL(value ~ season(window = "periodic"))
+dcmp %>% as_tsibble %>%
+  autoplot(season_adjust) + xlab("Year") +
+  ylab("Seasonally adjusted new orders index")
+```
+
+## \large Seasonally adjusted electrical equipment
+
+1. Time plot shows sudden changes, particularly big drop in 2008/2009 due to global economic environment. Otherwise nothing unusual and no need for data adjustments.
+2. No evidence of changing variance, so no Box-Cox transformation.
+3. Data are clearly non-stationary, so we take first differences.
+
+## \large Seasonally adjusted electrical equipment
+\fontsize{11}{12}\sf
+
+```{r ee2, echo=TRUE, fig.height=4}
+dcmp %>% gg_tsdisplay(difference(season_adjust))
+```
+
+## \large Seasonally adjusted electrical equipment
+
+4. PACF is suggestive of AR(3). So initial candidate model is ARIMA(3,1,0). No other obvious candidates.
+5. Fit ARIMA(3,1,0) model along with variations: ARIMA(4,1,0), ARIMA(2,1,0), ARIMA(3,1,1), etc. ARIMA(3,1,1) has smallest \text{AICc} value.
+
+## \large Seasonally adjusted electrical equipment
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE}
+fit <- dcmp %>%
+  model(
+    arima = ARIMA(season_adjust ~ pdq(3,1,1) + PDQ(0,0,0))
+  )
+report(fit)
+```
+
+## \large Seasonally adjusted electrical equipment
+
+6. ACF plot of residuals from ARIMA(3,1,1) model look like white noise.
+
+\fontsize{11}{11}\sf
+
+```{r, echo=FALSE, fig.height=3.4}
+augment(fit) %>% gg_tsdisplay(.resid, plot_type = "hist")
+```
+
+## \large Seasonally adjusted electrical equipment
+\fontsize{11}{12}\sf
+
+```{r}
+augment(fit) %>%
+  features(.resid, ljung_box, lag = 24, dof = 4)
+```
+
+## \large Seasonally adjusted electrical equipment
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE}
+fit %>% forecast %>% autoplot(dcmp)
+```
+
+# Forecasting
+
+## Point forecasts
+
+1. Rearrange ARIMA equation so $y_t$ is on LHS.
+2. Rewrite equation by replacing $t$ by $T+h$.
+3. On RHS, replace future observations by their forecasts, future errors by zero, and past errors by corresponding residuals.
+
+Start with $h=1$. Repeat for $h=2,3,\dots$.
+
+## Point forecasts
+\fontsize{14}{14}\sf
+
+\alert{ARIMA(3,1,1) forecasts: Step 1}
+\begin{block}{}
+\centerline{$(1-\phi_1B -\phi_2B^2-\phi_3B^3)(1-B) y_t = (1+\theta_1B)\varepsilon_{t},$}
+\end{block}
+\pause\vspace*{-0.4cm}
+\begin{align*}
+\left[1-(1+\phi_1)B +(\phi_1-\phi_2)B^2 + (\phi_2-\phi_3)B^3 +\phi_3B^4\right] y_t\\ = (1+\theta_1B)\varepsilon_{t},
+\end{align*}\pause\vspace*{-0.4cm}
+\begin{align*}
+y_t - (1+\phi_1)y_{t-1} +(\phi_1-\phi_2)y_{t-2} + (\phi_2-\phi_3)y_{t-3}\\ \mbox{}+\phi_3y_{t-4} = \varepsilon_t+\theta_1\varepsilon_{t-1}.
+\end{align*}\pause\vspace*{-0.4cm}
+\begin{align*}
+y_t = (1+\phi_1)y_{t-1} -(\phi_1-\phi_2)y_{t-2} - (\phi_2-\phi_3)y_{t-3}\\\mbox{} -\phi_3y_{t-4} + \varepsilon_t+\theta_1\varepsilon_{t-1}.
+\end{align*}
+
+## Point forecasts (h=1)
+\fontsize{14}{14}\sf
+
+\begin{block}{}
+\begin{align*}
+y_t = (1+\phi_1)y_{t-1} -(\phi_1-\phi_2)y_{t-2} - (\phi_2-\phi_3)y_{t-3}\\\mbox{} -\phi_3y_{t-4} + \varepsilon_t+\theta_1\varepsilon_{t-1}.
+\end{align*}
+\end{block}\pause
+\alert{ARIMA(3,1,1) forecasts: Step 2}
+\begin{align*}
+y_{T+1} = (1+\phi_1)y_{T} -(\phi_1-\phi_2)y_{T-1} - (\phi_2-\phi_3)y_{T-2}\\\mbox{} -\phi_3y_{T-3} + \varepsilon_{T+1}+\theta_1\varepsilon_{T}.
+\end{align*}\pause
+\alert{ARIMA(3,1,1) forecasts: Step 3}
+\begin{align*}
+\hat{y}_{T+1|T} = (1+\phi_1)y_{T} -(\phi_1-\phi_2)y_{T-1} - (\phi_2-\phi_3)y_{T-2}\\\mbox{} -\phi_3y_{T-3} + \theta_1 e_{T}.
+\end{align*}
+
+## Point forecasts (h=2)
+\fontsize{14}{14}\sf
+
+\begin{block}{}
+\begin{align*}
+y_t = (1+\phi_1)y_{t-1} -(\phi_1-\phi_2)y_{t-2} - (\phi_2-\phi_3)y_{t-3}\\\mbox{} -\phi_3y_{t-4} + \varepsilon_t+\theta_1\varepsilon_{t-1}.
+\end{align*}
+\end{block}\pause
+\alert{ARIMA(3,1,1) forecasts: Step 2}
+\begin{align*}
+y_{T+2} = (1+\phi_1)y_{T+1} -(\phi_1-\phi_2)y_{T} - (\phi_2-\phi_3)y_{T-1}\\\mbox{} -\phi_3y_{T-2} + \varepsilon_{T+2}+\theta_1\varepsilon_{T+1}.
+\end{align*}\pause
+\alert{ARIMA(3,1,1) forecasts: Step 3}
+\begin{align*}
+\hat{y}_{T+2|T} = (1+\phi_1)\hat{y}_{T+1|T} -(\phi_1-\phi_2)y_{T} - (\phi_2-\phi_3)y_{T-1}\\\mbox{} -\phi_3y_{T-2}.
+\end{align*}
+
+## Prediction intervals
+
+\begin{block}{95\% prediction interval}
+$$\hat{y}_{T+h|T} \pm 1.96\sqrt{v_{T+h|T}}$$
+where $v_{T+h|T}$ is estimated forecast variance.
+\end{block}\pause
+
+* $v_{T+1|T}=\hat{\sigma}^2$ for all ARIMA models regardless of parameters and orders.
+* Multi-step prediction intervals for ARIMA(0,0,$q$):
+\centerline{$\displaystyle y_t = \varepsilon_t + \sum_{i=1}^q \theta_i \varepsilon_{t-i}.$}
+\centerline{$\displaystyle
+v_{T|T+h} = \hat{\sigma}^2 \left[ 1 + \sum_{i=1}^{h-1} \theta_i^2\right], \qquad\text{for~} h=2,3,\dots.$}
+
+## Prediction intervals
+
+\begin{block}{95\% prediction interval}
+$$\hat{y}_{T+h|T} \pm 1.96\sqrt{v_{T+h|T}}$$
+where $v_{T+h|T}$ is estimated forecast variance.
+\end{block}
+
+* Multi-step prediction intervals for ARIMA(0,0,$q$):
+\centerline{$\displaystyle y_t = \varepsilon_t + \sum_{i=1}^q \theta_i \varepsilon_{t-i}.$}
+\centerline{$\displaystyle
+v_{T|T+h} = \hat{\sigma}^2 \left[ 1 + \sum_{i=1}^{h-1} \theta_i^2\right], \qquad\text{for~} h=2,3,\dots.$}
+
+\pause
+
+* AR(1): Rewrite as MA($\infty$) and use above result.
+* Other models beyond scope of this subject.
+
+## Prediction intervals
+
+* Prediction intervals **increase in size with forecast horizon**.
+* Prediction intervals can be difficult to calculate by hand
+* Calculations assume residuals are **uncorrelated** and **normally distributed**.
+* Prediction intervals tend to be too narrow.
+    * the uncertainty in the parameter estimates has not been accounted for.
+    * the ARIMA model assumes historical patterns will not change during the forecast period.
+    * the ARIMA model assumes uncorrelated future \rlap{errors}
+
+## Your turn
+
+For the United States GDP data (from `global_economy`):
+
+ * if necessary, find a suitable Box-Cox transformation for the data;
+ * fit a suitable ARIMA model to the transformed data;
+ * check the residual diagnostics;
+ * produce forecasts of your fitted model. Do the forecasts look reasonable?
+
+<!-- # Backshift notation revisited
+
+## Backshift notation
+
+A very useful notational device is the backward shift operator, $B$, which is used as follows:
+$$
+{B y_{t} = y_{t - 1}} \: .
+$$\pause
+In other words, $B$, operating on $y_{t}$, has the effect of **shifting the data back one period**. \pause
+Two applications of $B$ to $y_{t}$ **shifts the data back two periods**:
+$$
+B(By_{t}) = B^{2}y_{t} = y_{t-2}\: .
+$$\pause
+For  monthly  data, if we wish to shift attention  to  ``the same  month last year,''  then  $B^{12}$ is used,  and  the notation is  $B^{12}y_{t}$  =  $y_{t-12}$.
+
+## Backshift notation
+
+  * First difference: $1-B$.
+  * Double difference:  $(1- B)^{2}$.
+  * $d$th-order difference: $(1 - B)^{d} y_{t}.$
+  * Seasonal difference: $1-B^m$.
+  * Seasonal difference followed by a first difference: $(1-B)(1-B^m)$.
+  * Multiply terms together together to see the combined effect:
+\begin{align*}
+(1-B)(1-B^m)y_t &= (1 - B - B^m + B^{m+1})y_t \\
+&= y_t-y_{t-1}-y_{t-m}+y_{t-m-1}.
+\end{align*}
+
+## Backshift notation for ARIMA
+\fontsize{13}{15}\sf
+
+  * ARMA model:
+
+  \vspace*{-0.9cm}
+\begin{align*}
+\hspace*{0.5cm} y_{t}  &=  c  +  \phi_{1}y_{t - 1}  +  \cdots  +  \phi_{p}y_{t - p}
+ + \varepsilon_t + \theta_{1}\varepsilon_{t - 1} +  \cdots  + \theta_{q}\varepsilon_{t - q}\\
+       &=  c + \phi_{1}By_{t} + \cdots + \phi_pB^py_{t}
+           +  \varepsilon_{t}  +  \theta_{1}B\varepsilon_{t} + \cdots + \theta_qB^q\varepsilon_{t} \\
+\phi(B)y_t & = c + \theta(B) \varepsilon_t\\
+  & \hspace*{0.6cm} \text{where $\phi(B)= 1-\phi_1B - \cdots - \phi_p B^p$}\\
+  & \hspace*{0.6cm} \text{and $\theta(B) = 1 + \theta_1 B + \cdots + \theta_q B^q$.}
+\end{align*}
+
+\pause
+
+  * ARIMA(1,1,1) model:
+
+$$
+\begin{array}{c c c c}
+(1 - \phi_{1} B) & (1  -  B) y_{t} &= &c + (1  + \theta_{1} B) \varepsilon_{t}\\
+\uparrow  & \uparrow    &   &\uparrow\\
+{\text{AR(1)}} & {\text{First}}   &     &{\text{MA(1)}}\\
+& {\hbox to 0cm{\hss\text{difference}\hss}}\\
+\end{array}
+$$
+
+## Backshift notation for ARIMA
+\fontsize{13}{15}\sf
+
+  * ARIMA($p,d,q$) model:
+
+\begin{equation*}
+  \arraycolsep=0.1cm
+  \begin{array}{c c c c}
+    (1-\phi_1B - \cdots - \phi_p B^p) & (1-B)^d y_{t} &= &c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t\\
+    {\uparrow} & {\uparrow} & &{\uparrow}\\
+    {\text{AR($p$)}} & \hbox to 0cm{\hss\text{$d$ differences}\hss} & &{\text{MA($q$)}}\\
+  \end{array}
+\end{equation*}
+ -->
+
+# Seasonal ARIMA models
+
+## Seasonal ARIMA models
+
+| ARIMA | $~\underbrace{(p, d, q)}$ | $\underbrace{(P, D, Q)_{m}}$ |
+| ----: | :-----------------------: | :--------------------------: |
+|       | ${\uparrow}$              | ${\uparrow}$                 |
+|       | Non-seasonal part         | Seasonal part of             |
+|       | of the model              | of the model                 |
+
+where $m =$ number of observations per year.
+
+## Seasonal ARIMA models
+
+E.g., ARIMA$(1, 1, 1)(1, 1, 1)_{4}$ model (without constant)\pause
+$$(1 - \phi_{1}B)(1 - \Phi_{1}B^{4}) (1 - B) (1 - B^{4})y_{t} ~= ~
+(1 + \theta_{1}B) (1 + \Theta_{1}B^{4})\varepsilon_{t}.
+$$\pause
+
+\setlength{\unitlength}{1mm}
+\begin{footnotesize}
+\begin{picture}(100,25)(-5,0)
+\thinlines
+{\put(5,22){\vector(0,1){6}}}
+{\put(22,10){\vector(0,1){18}}}
+{\put(38,22){\vector(0,1){6}}}
+{\put(52,10){\vector(0,1){18}}}
+{\put(77,22){\vector(0,1){6}}}
+{\put(95,10){\vector(0,1){18}}}
+{\put(-10,17){$\left(\begin{array}{@{}c@{}} \text{Non-seasonal} \\ \text{AR(1)}
+                    \end{array}\right)$}}
+{\put(12,5){$\left(\begin{array}{@{}c@{}} \text{Seasonal} \\ \text{AR(1)}
+                    \end{array}\right)$}}
+{\put(25,17){$\left(\begin{array}{@{}c@{}} \text{Non-seasonal} \\ \text{difference}
+                    \end{array}\right)$}}
+{\put(40,5){$\left(\begin{array}{@{}c@{}} \text{Seasonal} \\ \text{difference}
+                    \end{array}\right)$}}
+{\put(65,17){$\left(\begin{array}{@{}c@{}} \text{Non-seasonal} \\ \text{MA(1)}
+                    \end{array}\right)$}}
+{\put(85,5){$\left(\begin{array}{@{}c@{}} \text{Seasonal} \\ \text{MA(1)}
+                    \end{array}\right)$}}
+\end{picture}
+\end{footnotesize}
+
+\vspace*{10cm}
+
+## Seasonal ARIMA models
+
+E.g., ARIMA$(1, 1, 1)(1, 1, 1)_{4}$ model (without constant)
+$$(1 - \phi_{1}B)(1 - \Phi_{1}B^{4}) (1 - B) (1 - B^{4})y_{t} ~= ~
+(1 + \theta_{1}B) (1 + \Theta_{1}B^{4})\varepsilon_{t}.
+$$
+
+All the factors can be multiplied out and the general model
+written as follows:
+\begin{align*}
+y_{t} &= (1 + \phi_{1})y_{t - 1} - \phi_1y_{t-2} + (1 + \Phi_{1})y_{t - 4}\\
+&\text{}
+ - (1 + \phi_{1} + \Phi_{1} + \phi_{1}\Phi_{1})y_{t - 5}
+ + (\phi_{1} + \phi_{1} \Phi_{1}) y_{t - 6} \\
+& \text{} - \Phi_{1} y_{t - 8} + (\Phi_{1} + \phi_{1} \Phi_{1}) y_{t - 9}
+  - \phi_{1} \Phi_{1} y_{t - 10}\\
+  &\text{}
+  + \varepsilon_{t} + \theta_{1}\varepsilon_{t - 1} + \Theta_{1}\varepsilon_{t - 4} + \theta_{1}\Theta_{1}\varepsilon_{t - 5}.
+\end{align*}
+\vspace*{10cm}
+
+## Common ARIMA models
+
+The US Census Bureau uses the following models most often:\vspace*{0.5cm}
+
+\begin{tabular}{|ll|}
+\hline
+ARIMA(0,1,1)(0,1,1)$_m$& with log transformation\\
+ARIMA(0,1,2)(0,1,1)$_m$& with log transformation\\
+ARIMA(2,1,0)(0,1,1)$_m$& with log transformation\\
+ARIMA(0,2,2)(0,1,1)$_m$& with log transformation\\
+ARIMA(2,1,2)(0,1,1)$_m$& with no transformation\\
+\hline
+\end{tabular}
+
+## Seasonal ARIMA models
+The seasonal part of an AR or MA model will be seen in the seasonal lags of
+the PACF and ACF.
+
+\alert{ARIMA(0,0,0)(0,0,1)$_{12}$ will show:}
+
+  * a spike at lag 12 in the ACF but no other significant spikes.
+  * The PACF will show exponential decay in the seasonal lags; that is, at lags 12, 24, 36, \dots.
+
+\alert{ARIMA(0,0,0)(1,0,0)$_{12}$ will show:}
+
+  * exponential decay in the seasonal lags of the ACF
+  * a single significant spike at lag 12 in the PACF.
+
+## European quarterly retail trade
+
+```{r, echo=TRUE, fig.height=3.6}
+eu_retail %>% autoplot(value) +
+  xlab("Year") + ylab("Retail index")
+```
+
+## European quarterly retail trade
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE, fig.height=4}
+eu_retail %>% gg_tsdisplay(
+  value %>% difference(4))
+```
+
+## European quarterly retail trade
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE, fig.height=3.8}
+eu_retail %>% gg_tsdisplay(
+  value %>% difference(4) %>% difference(1))
+```
+
+## European quarterly retail trade
+
+  * $d=1$ and $D=1$ seems necessary.
+  * Significant spike at lag 1 in ACF suggests non-seasonal MA(1) component.
+  * Significant spike at lag 4 in ACF suggests seasonal MA(1) component.
+  * Initial candidate model: ARIMA(0,1,1)(0,1,1)$_4$.
+  * We could also have started with ARIMA(1,1,0)(1,1,0)$_4$.
+
+## European quarterly retail trade
+\fontsize{11}{12}
+
+```{r, echo=TRUE, fig.height=3.5}
+fit <- eu_retail %>%
+  model(arima = ARIMA(value ~ pdq(0,1,1) + PDQ(0,1,1)))
+augment(fit) %>% gg_tsdisplay(.resid, plot_type = "hist")
+```
+
+## European quarterly retail trade
+\fontsize{11}{12}\sf
+
+```{r, echo = TRUE}
+augment(fit) %>%
+  features(.resid, ljung_box, lag = 8, dof = 2)
+```
+
+## European quarterly retail trade
+
+```{r, echo=FALSE}
+aicc <- eu_retail %>%
+  model(
+    mdl_1 = ARIMA(value ~ pdq(0,1,1) + PDQ(0,1,1)),
+    mdl_2 = ARIMA(value ~ pdq(0,1,2) + PDQ(0,1,1)),
+    mdl_3 = ARIMA(value ~ pdq(0,1,3) + PDQ(0,1,1)),
+    mdl_4 = ARIMA(value ~ pdq(0,1,4) + PDQ(0,1,1))
+  ) %>%
+  glance %>%
+  pull(AICc)
+```
+
+  * ACF and PACF of residuals show significant spikes at lag 2, and maybe lag 3.
+  * AICc of ARIMA(0,1,1)(0,1,1)$_4$ model is `r round(aicc[1],2)`
+  * AICc of ARIMA(0,1,2)(0,1,1)$_4$ model is `r round(aicc[2],2)`.
+  * AICc of ARIMA(0,1,3)(0,1,1)$_4$ model is `r round(aicc[3],2)`.
+  * AICc of ARIMA(0,1,4)(0,1,1)$_4$ model is `r round(aicc[4],2)`.
+
+## European quarterly retail trade
+
+\fontsize{11}{12}\sf
+
+```{r, echo=TRUE}
+fit <- eu_retail %>%
+  model(
+    arima013011 = ARIMA(value ~ pdq(0,1,3) + PDQ(0,1,1))
+  )
+report(fit)
+```
+
+## European quarterly retail trade
+\fontsize{13}{15}\sf
+
+```{r, echo=TRUE, fig.height=4}
+augment(fit) %>%
+  gg_tsdisplay(.resid, plot_type = "hist")
+```
+
+## European quarterly retail trade
+\fontsize{13}{15}\sf
+
+```{r, echo=TRUE}
+augment(fit) %>%
+  features(.resid, ljung_box, lag = 8, dof = 4)
+```
+
+## European quarterly retail trade
+
+```{r, echo=TRUE, fig.height=3.8}
+fit %>% forecast(h = "3 years") %>%
+  autoplot(eu_retail)
+```
+
+## European quarterly retail trade
+\fontsize{11}{14}\sf
+
+```{r, echo=TRUE}
+eu_retail %>% model(ARIMA(value)) %>% report()
+```
+
+## European quarterly retail trade
+\fontsize{11}{14}\sf
+
+```{r eu_retailtryharder, echo=TRUE}
+eu_retail %>% model(ARIMA(value, stepwise = FALSE,
+  approximation = FALSE)) %>% report()
+```
+
+## Cortecosteroid drug sales
+
+```{r h02}
+h02 %>%
+  mutate(log(Cost)) %>%
+  gather() %>%
+  ggplot(aes(x = Month, y = value)) +
+  geom_line() +
+  facet_grid(key ~ ., scales = "free_y") +
+  xlab("Year") + ylab("") +
+  ggtitle("Cortecosteroid drug scripts (H02)")
+```
+
+## Cortecosteroid drug sales
+```{r h02b}
+h02 %>% gg_tsdisplay(difference(log(Cost),12), lag_max = 36)
+```
+
+## Cortecosteroid drug sales
+
+  * Choose $D=1$ and $d=0$.
+  * Spikes in PACF at lags 12 and 24 suggest seasonal AR(2) term.
+  * Spikes in PACF suggests possible non-seasonal AR(3) term.
+  * Initial candidate model: ARIMA(3,0,0)(2,1,0)$_{12}$.
+
+## Cortecosteroid drug sales
+
+```{r h02aicc, echo=FALSE}
+models <- list(
+  c(3,0,0,2,1,0),
+  c(3,0,1,2,1,0),
+  c(3,0,2,2,1,0),
+  c(3,0,1,1,1,0),
+  c(3,0,1,0,1,1),
+  c(3,0,1,0,1,2),
+  c(3,0,1,1,1,1)
+)
+model_defs <- map(models, ~ ARIMA(log(Cost) ~ 0 + pdq(!!.[1], !!.[2], !!.[3]) + PDQ(!!.[4], !!.[5], !!.[6])))
+model_defs <- set_names(model_defs, map_chr(models,
+  ~ sprintf("ARIMA(%i,%i,%i)(%i,%i,%i)[12]", .[1], .[2], .[3], .[4], .[5], .[6])))
+
+fit <- h02 %>%
+  model(!!!model_defs)
+
+fit %>%
+  glance %>%
+  arrange(AICc) %>%
+  select(.model, AICc) %>%
+  knitr::kable(digits=2, row.names=FALSE, align='cc', booktabs=TRUE)
+```
+
+## Cortecosteroid drug sales
+\fontsize{10}{12}\sf
+
+```{r arimah02, echo=TRUE}
+fit <- h02 %>%
+  model(best = ARIMA(log(Cost) ~ 0 + pdq(3,0,1) + PDQ(0,1,2)))
+report(fit)
+```
+
+## Cortecosteroid drug sales
+\fontsize{10}{12}\sf
+
+```{r h02res, echo=TRUE, fig.height=4, dependson='arimah02'}
+augment(fit) %>%
+  gg_tsdisplay(.resid, lag_max=36, plot_type = "hist")
+```
+
+## Cortecosteroid drug sales
+\fontsize{11}{15}\sf
+
+```{r h02resb, echo = TRUE, fig.height=4, dependson='arimah02'}
+augment(fit) %>%
+  features(.resid, ljung_box, lag = 36, dof = 6)
+```
+
+## Cortecosteroid drug sales
+\fontsize{11}{13}\sf
+
+```{r h02auto, echo=TRUE, fig.height=3.6}
+fit <- h02 %>% model(auto = ARIMA(log(Cost)))
+report(fit)
+```
+
+## Cortecosteroid drug sales
+\fontsize{10}{12}\sf
+
+```{r, echo=TRUE, fig.height=4, dependson='h02auto'}
+augment(fit) %>%
+  gg_tsdisplay(.resid, lag_max = 36, plot_type = "hist")
+```
+
+## Cortecosteroid drug sales
+\fontsize{11}{15}\sf
+
+```{r, echo = TRUE, dependson='h02auto'}
+augment(fit) %>%
+  features(.resid, ljung_box, lag = 36, dof = 5)
+```
+
+## Cortecosteroid drug sales
+\fontsize{9}{9}\sf
+
+```{r h02tryharder, echo=TRUE, fig.height=3.6}
+fit <- h02 %>%
+  model(best = ARIMA(log(Cost), stepwise = FALSE,
+                 approximation = FALSE,
+                 order_constraint = p + q + P + Q <= 9))
+report(fit)
+```
+
+## Cortecosteroid drug sales
+\fontsize{10}{12}\sf
+
+```{r, echo=TRUE, fig.height=4, dependson='h02tryharder'}
+augment(fit) %>%
+  gg_tsdisplay(.resid, lag_max = 36, plot_type = "hist")
+```
+
+## Cortecosteroid drug sales
+\fontsize{11}{15}\sf
+
+```{r, echo = TRUE, dependson='h02tryharder'}
+augment(fit) %>%
+  features(.resid, ljung_box, lag = 36, dof = 9)
+```
+
+## Cortecosteroid drug sales
+\fontsize{10}{12}\sf
+
+Training data: July 1991 to June 2006
+
+Test data: July 2006--June 2008
+
+```r
+fit <- h02 %>%
+  filter_index(~ "2006 Jun") %>%
+  model(
+    ARIMA(log(Cost) ~ pdq(3, 0, 0) + PDQ(2, 1, 0)),
+    ARIMA(log(Cost) ~ pdq(3, 0, 1) + PDQ(2, 1, 0)),
+    ARIMA(log(Cost) ~ pdq(3, 0, 2) + PDQ(2, 1, 0)),
+    ARIMA(log(Cost) ~ pdq(3, 0, 1) + PDQ(1, 1, 0))
+    # ... #
+  )
+
+fit %>%
+  forecast(h = "2 years") %>%
+  accuracy(h02 %>% filter_index("2006 Jul" ~ .))
+```
+
+## Cortecosteroid drug sales
+\fontsize{12}{14}\sf
+
+```{r h02-rmse, cache=TRUE}
+models <- list(
+  c(3,0,0,2,1,0),
+  c(3,0,1,2,1,0),
+  c(3,0,2,2,1,0),
+  c(3,0,1,1,1,0),
+  c(3,0,1,0,1,1),
+  c(3,0,1,0,1,2),
+  c(3,0,1,1,1,1),
+  c(3,0,3,0,1,1),
+  c(3,0,2,0,1,1),
+  c(2,1,3,0,1,1),
+  c(2,1,4,0,1,1),
+  c(2,1,5,0,1,1),
+  c(4,1,1,2,1,2))
+
+model_defs <- map(models, ~ ARIMA(log(Cost) ~ 0 + pdq(!!.[1], !!.[2], !!.[3]) + PDQ(!!.[4], !!.[5], !!.[6])))
+model_defs <- set_names(model_defs, map_chr(models,
+  ~ sprintf("ARIMA(%i,%i,%i)(%i,%i,%i)[12]", .[1], .[2], .[3], .[4], .[5], .[6])))
+
+fit <- h02 %>%
+  filter_index(~ "2006 Jun") %>%
+  model(!!!model_defs)
+
+fit %>%
+  forecast(h = "2 years") %>%
+  accuracy(h02 %>% filter_index("2006 Jul" ~ .)) %>%
+  arrange(RMSE) %>%
+  select(.model, RMSE) %>%
+  knitr::kable(digits=4)
+```
+
+## Cortecosteroid drug sales
+
+  * Models with lowest AICc values tend to give slightly better results than the other models.
+  * AICc comparisons must have the same orders of differencing. But RMSE test set comparisons can involve any models.
+  * Use the best model available, even if it does not pass all tests.
+
+## Cortecosteroid drug sales
+\fontsize{11}{14}\sf
+
+```{r h02f, echo=TRUE, fig.height=3}
+fit <- h02 %>%
+  model(ARIMA(Cost ~ 0 + pdq(3,0,1) + PDQ(0,1,2)))
+fit %>% forecast %>% autoplot(h02) +
+  ylab("H02 Expenditure ($AUD)") + xlab("Year")
+```
+
+# ARIMA vs ETS
+
+## ARIMA vs ETS
+
+  * Myth that ARIMA models are more general than exponential smoothing.
+
+  * Linear exponential smoothing models all special cases of ARIMA models.
+
+  * Non-linear exponential smoothing models have no equivalent ARIMA counterparts.
+
+  * Many ARIMA models have no exponential smoothing counterparts.
+
+  * ETS models all non-stationary. Models with seasonality or non-damped trend (or both) have two unit roots; all other models have one unit \rlap{root.}
+
+\vspace*{10cm}
+
+## Equivalences
+
+\fontsize{12}{14}\sf
+
+|**ETS model**  | **ARIMA model**             | **Parameters**                       |
+| :------------ | :-------------------------- | :----------------------------------- |
+| ETS(A,N,N)    | ARIMA(0,1,1)                | $\theta_1 = \alpha-1$                |
+| ETS(A,A,N)    | ARIMA(0,2,2)                | $\theta_1 = \alpha+\beta-2$          |
+|               |                             | $\theta_2 = 1-\alpha$                |
+| ETS(A,A,N)    | ARIMA(1,1,2)                | $\phi_1=\phi$                        |
+|               |                             | $\theta_1 = \alpha+\phi\beta-1-\phi$ |
+|               |                             | $\theta_2 = (1-\alpha)\phi$          |
+| ETS(A,N,A)    | ARIMA(0,0,$m$)(0,1,0)$_m$   |                                      |
+| ETS(A,A,A)    | ARIMA(0,1,$m+1$)(0,1,0)$_m$ |                                      |
+| ETS(A,A,A)    | ARIMA(1,0,$m+1$)(0,1,0)$_m$ |                                      |
+
+## Your turn
+
+\fontsize{13}{13}\sf
+
+For the `fma::condmilk` series:
+
+  * Do the data need transforming? If so, find a suitable transformation.
+  * Are the data stationary? If not, find an appropriate differencing which yields stationary data.
+  * Identify a couple of ARIMA models that might be useful in describing the time series.
+  * Which of your models is the best according to their AIC values?
+  * Estimate the parameters of your best model and do diagnostic testing on the residuals. Do the residuals resemble white noise? If not, try to find another ARIMA model which fits better.
+  * Forecast the next 24 months of data using your preferred model.
+  * Compare the forecasts obtained using `ets()`.
