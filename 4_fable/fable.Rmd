@@ -603,38 +603,16 @@ gridExtra::grid.arrange(p1,p2,nrow=1)
 ## AR(1) model
 
 \begin{block}{}
-\centerline{$y_{t} = 2 -0.8 y_{t - 1} + \varepsilon_{t}$}
-\end{block}
-\rightline{$\varepsilon_t\sim N(0,1)$,\quad $T=100$.}
-
-```{r, echo=FALSE}
-p1
-```
-
-## AR(1) model
-
-\begin{block}{}
   \centerline{$y_{t} = c + \phi_1 y_{t - 1} + \varepsilon_{t}$}
 \end{block}
 
-* When $\phi_1=0$, $y_t$ is **equivalent to WN**
-* When $\phi_1=1$ and $c=0$, $y_t$ is **equivalent to a RW**
-* When $\phi_1=1$ and $c\ne0$, $y_t$ is **equivalent to a RW with drift**
-* When $\phi_1<0$, $y_t$ tends to **oscillate between positive and negative values**.
-
-## AR(2) model
-
-\begin{block}{}
-  \centerline{$y_t = 8 + 1.3y_{t-1} - 0.7 y_{t-2} + \varepsilon_t$}
-\end{block}
-\rightline{$\varepsilon_t\sim N(0,1)$, \qquad $T=100$.}
-
-```{r}
-p2
-```
+* When $\phi_1=0$, $y_t$ is **equivalent to white noise**
+* When $\phi_1=1$ and $c=0$, $y_t$ is **equivalent to a random walk**
+* When $\phi_1=1$ and $c\ne0$, $y_t$ is **equivalent to a random walk with drift**
+* When $\phi_1<0$, $y_t$ tends to **oscillate**.
 
 ## Stationarity conditions
-\fontsize{14}{15}\sf
+\fontsize{14}{16}\sf
 
 We normally restrict autoregressive models to stationary data, and then some constraints on the values of the parameters are required.
 
@@ -645,7 +623,45 @@ We normally restrict autoregressive models to stationary data, and then some con
 * For $p=1$: $-1<\phi_1<1$.
 * For $p=2$:\newline $-1<\phi_2<1\qquad \phi_2+\phi_1 < 1 \qquad \phi_2 -\phi_1 < 1$.
 * More complicated conditions hold for $p\ge3$.
-* Estimation software takes care of this.
+* Cyclic behaviour is possible when $p\ge 2$.
+
+## Cyclic data
+\fontsize{11}{12}\sf
+
+```{r pelt}
+pelt %>% autoplot(Lynx) +
+  xlab("Year") + ylab("Number trapped") +
+  ggtitle("Annual Canadian Lynx Trappings")
+```
+
+## Cyclic data
+\fontsize{11}{12}\sf
+
+```{r peltsqrt}
+pelt %>% autoplot(sqrt(Lynx)) +
+  xlab("Year") + ylab("Number trapped") +
+  ggtitle("Annual Canadian Lynx Trappings")
+```
+
+
+## Cyclic data
+\fontsize{11}{12}\sf
+
+```{r pelt1}
+pelt %>%
+  model(lynx = ARIMA(sqrt(Lynx) ~ pdq(q=0))) %>%
+  report()
+```
+
+## Cyclic data
+\fontsize{11}{12}\sf
+
+```{r pelt2}
+pelt %>%
+  model(lynx = ARIMA(sqrt(Lynx) ~ pdq(q=0))) %>%
+  forecast(h=20) %>%
+  autoplot(pelt)
+```
 
 ## Moving Average (MA) models
 
