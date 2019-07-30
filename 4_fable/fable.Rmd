@@ -493,6 +493,7 @@ usmelec %>% autoplot(
 
 
 ## Differencing
+\fontsize{13}{15}\sf
 
 * Logs and other transformations can help to **stabilize the variance**.
 * Differencing helps to **stabilize the mean**.
@@ -553,34 +554,9 @@ usmelec %>% mutate(d_log_gen = difference(log(Generation), 12)) %>%
   features(d_log_gen, unitroot_ndiffs)
 ```
 
-## Backshift notation
-
-A very useful notational device is the backward shift operator, $B$, which is used as follows:
-$$
-  B y_{t} = y_{t - 1}
-$$\pause
-In other words, $B$, operating on $y_{t}$, has the effect of **shifting the data back one period**. \pause
-Two applications of $B$ to $y_{t}$ **shifts the data back two periods**:
-$$
-  B(By_{t}) = B^{2}y_{t} = y_{t-2}
-$$\pause
-For monthly data, if we wish to shift attention to "the same month last year", then $B^{12}$ is used, and the notation is $B^{12}y_{t} = y_{t-12}$.
-
-## Backshift notation
-
-The backward shift operator is convenient for describing the process of *differencing*. \pause
-
-* A first difference can be written as
-$$
-  y_{t} - y_{t-1} = y_t - By_{t} = (1 - B)y_{t}
-$$
-* A second-order difference is denoted $(1- B)^{2}$.
-* In general, a $d$th-order difference can be written as $(1 - B)^{d} y_{t}$
-* A seasonal difference followed by a first difference can be written as $(1-B)(1-B^m)y_t$.
-
 ## Autoregressive models
 
-\begin{block}{Autoregressive (AR) models:}
+\begin{block}{Autoregressive (AR) models:}\vspace*{-0.4cm}
 $$
   y_{t} = c + \phi_{1}y_{t - 1} + \phi_{2}y_{t - 2} + \cdots + \phi_{p}y_{t - p} + \varepsilon_{t},
 $$
@@ -771,31 +747,8 @@ MA:& $q =$ order of the moving average part.
 * AR($p$): ARIMA($p$,0,0)
 * MA($q$): ARIMA(0,0,$q$)
 
-## Backshift notation for ARIMA
-
-* ARMA model:\vspace*{-1cm}\newline
-\parbox{12cm}{\small\begin{align*}
-\hspace*{-1cm}
-y_{t} &= c + \phi_{1}By_{t} + \cdots + \phi_pB^py_{t}
-           + \varepsilon_{t} + \theta_{1}B\varepsilon_{t} + \cdots + \theta_qB^q\varepsilon_{t} \\
-\hspace*{-1cm} \text{or}\quad
-      & (1-\phi_1B - \cdots - \phi_p B^p) y_t = c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t
-\end{align*}}
-
-* ARIMA(1,1,1) model:\vspace*{-0.5cm}
-
-\[
-\begin{array}{c c c c}
-(1 - \phi_{1} B) & (1 - B) y_{t} &= &c + (1 + \theta_{1} B) \varepsilon_{t}\\
-{\uparrow} & {\uparrow} & &{\uparrow}\\
-{\text{AR(1)}} & {\text{First}} &  &{\text{MA(1)}}\\
-& {\hbox to 0cm{\hss\text{difference}\hss}}\\
-\end{array}
-\]\pause
-Written out:
-$$
-  y_t = c + y_{t-1} + \phi_1 y_{t-1}- \phi_1 y_{t-2} + \theta_1\varepsilon_{t-1} + \varepsilon_t
-$$
+## Example: US electricity production
+\fontsize{11}{13}\sf
 
 ## R model
 
