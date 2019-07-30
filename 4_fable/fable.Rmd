@@ -439,148 +439,25 @@ A **stationary series** is:
 * no patterns predictable in the long-term
 
 ## Stationary?
+\fontsize{11}{12}\sf
 
 ```{r}
 gafa_stock %>%
   filter(Symbol == "GOOG", year(Date) == 2018) %>%
-  autoplot(Close) + ylab("Google closing stock price") + xlab("Day")
+  autoplot(Close) +
+    ylab("Google closing stock price ($US)")
 ```
 
 ## Stationary?
-
-```{r}
-gafa_stock %>%
-  filter(Symbol == "GOOG", year(Date) == 2018) %>%
-  autoplot(difference(Close)) + ylab("Google closing stock price") + xlab("Day")
-```
-
-## Stationary?
-
-```{r}
-as_tsibble(fma::strikes) %>% autoplot(value) +
-  ylab("Number of strikes") + xlab("Year")
-```
-
-## Stationary?
-
-```{r}
-as_tsibble(fma::hsales) %>% autoplot(value) + xlab("Year") + ylab("Total sales") +
-  ggtitle("Sales of new one-family houses, USA")
-```
-
-## Stationary?
-```{r}
-as_tsibble(fma::eggs) %>% autoplot(value) + xlab("Year") + ylab("$") +
-  ggtitle("Price of a dozen eggs in 1993 dollars")
-```
-
-## Stationary?
-```{r}
-aus_livestock %>%
-  filter(
-    Animal == "Pigs",
-    State == "Victoria",
-    year(Month) >= 2010
-  ) %>%
-  autoplot(Count/1e3) + xlab("Year") + ylab("thousands") +
-  ggtitle("Number of pigs slaughtered in Victoria")
-```
-
-## Stationary?
-
-```{r}
-pelt %>% autoplot(Lynx) + xlab("Year") + ylab("Number trapped") +
-  ggtitle("Annual Canadian Lynx Trappings")
-```
-
-## Stationary?
-
-```{r}
-aus_production %>% filter_index("1992" ~ .) %>%
-  autoplot(Beer) + xlab("Year") + ylab("megalitres") +
-  ggtitle("Australian quarterly beer production")
-```
-
-## Stationarity
-
-\begin{block}{Definition}
-If $\{y_t\}$ is a stationary time series, then for all $s$, the distribution of $(y_t,\dots,y_{t+s})$ does not depend on $t$.
-\end{block}\pause\vspace*{0.4cm}
-
-Transformations help to **stabilize the variance**.
-
-For ARIMA modelling, we also need to **stabilize the mean**.
-
-## Non-stationarity in the mean
-\alert{Identifying non-stationary series}
-
-* time plot.
-* The ACF of stationary data drops to zero relatively quickly
-* The ACF of non-stationary data decreases slowly.
-* For non-stationary data, the value of $r_1$ is often large and positive.
-
-## Example: Google stock price
-
-```{r}
-gafa_stock %>%
-  filter(Symbol == "GOOG", year(Date) == 2018) %>%
-  autoplot(Close) + ylab("Closing stock price ($USD)") + xlab("Day")
-```
-
-## Example: Google stock price
-
-```{r}
-google_2018 <- gafa_stock %>%
-  filter(Symbol == "GOOG", year(Date) == 2018) %>%
-  mutate(trading_day = row_number()) %>%
-  update_tsibble(index = trading_day, regular = TRUE)
-google_2018 %>%
-  ACF(Close) %>% autoplot()
-```
-
-## Example: Google stock price
+\fontsize{11}{12}\sf
 
 ```{r}
 gafa_stock %>%
   filter(Symbol == "GOOG", year(Date) == 2018) %>%
   autoplot(difference(Close)) +
-  ylab("Change in Google closing stock price ($USD)") + xlab("Day")
+    ylab("Daily change in Google closing stock price")
 ```
 
-## Example: Google stock price
-
-```{r}
-google_2018 %>% ACF(difference(Close)) %>% autoplot()
-```
-
-## Differencing
-
-* Differencing helps to **stabilize the mean**.
-* The differenced series is the *change* between each observation in the original series: $y'_t = y_t - y_{t-1}$.
-* The differenced series will have only $T-1$ values since it is not possible to calculate a difference $y_1'$ for the first observation.
-
-## Second-order differencing
-
-Occasionally the differenced data will not appear stationary and it may be necessary to difference the data a second time:\pause
-\begin{align*}
-y''_{t} & = y'_{t} - y'_{t - 1} \\
-        & = (y_t - y_{t-1}) - (y_{t-1}-y_{t-2})\\
-        & = y_t - 2y_{t-1} +y_{t-2}.
-\end{align*}\pause
-
-* $y_t''$ will have $T-2$ values.
-* In practice, it is almost never necessary to go beyond second-order differences.
-
-## Seasonal differencing
-
-A seasonal difference is the difference between an observation and the corresponding observation from the previous year.\pause
-$$
- y'_t = y_t - y_{t-m}
-$$
-where $m=$ number of seasons.\pause
-
-* For monthly data $m=12$.
-* For quarterly data $m=4$.
 
 ## Electricity production
 \fontsize{11}{13}\sf
@@ -618,37 +495,16 @@ usmelec %>% autoplot(
 )
 ```
 
-## Electricity production
 
-* Seasonally differenced series is closer to being stationary.
-* Remaining non-stationarity can be removed with further first difference.
+## Differencing
 
-If $y'_t = y_t - y_{t-12}$ denotes seasonally differenced series, then twice-differenced series is
+* Logs and other transformations can help to **stabilize the variance**.
+* Differencing helps to **stabilize the mean**.
+* The differenced series is the *change* between each observation in the original series.
+* A seasonal difference is the difference between an observation and the corresponding observation from the previous year.
+* Occasionally the differenced data will not appear stationary and it may be necessary to difference the data a second time.
+* In practice, it is almost never necessary to go beyond second-order differences.
 
-\begin{block}{}
-\begin{align*}
-y^*_t &= y'_t - y'_{t-1} \\
-      &= (y_t - y_{t-12}) - (y_{t-1} - y_{t-13}) \\
-      &= y_t - y_{t-1} - y_{t-12} + y_{t-13}\: .
-\end{align*}
-\end{block}\vspace*{10cm}
-
-## Seasonal differencing
-
-When both seasonal and first differences are applied\dots\pause
-
-* it makes no difference which is done first---the result will be the same.
-* If seasonality is strong, we recommend that seasonal differencing be done first because sometimes the resulting series will be stationary and there will be no need for further first difference.\pause
-
-It is important that if differencing is used, the differences are interpretable.
-
-## Interpretation of differencing
-
-* first differences are the change between **one observation and the next**;
-* seasonal differences are the change between **one year to the next**.
-\pause
-
-But taking lag 3 differences for yearly data, for example, results in a model which cannot be sensibly interpreted.
 
 ## Unit root tests
 
@@ -662,14 +518,16 @@ But taking lag 3 differences for yearly data, for example, results in a model wh
 \fontsize{9}{10}\sf
 
 ```{r, echo=TRUE}
-google_2018 %>%
+gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) == 2018) %>%
   features(Close, unitroot_kpss)
 ```
 
 \pause
 
 ```{r, echo=TRUE}
-google_2018 %>%
+gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) == 2018) %>%
   features(Close, unitroot_ndiffs)
 ```
 
@@ -699,10 +557,6 @@ usmelec %>% mutate(d_log_gen = difference(log(Generation), 12)) %>%
   features(d_log_gen, unitroot_ndiffs)
 ```
 
-## Your turn
-
-For the `tourism` dataset, compute the total number of trips and find an appropriate differencing (after transformation if necessary) to obtain stationary data.
-
 ## Backshift notation
 
 A very useful notational device is the backward shift operator, $B$, which is used as follows:
@@ -719,39 +573,14 @@ For monthly data, if we wish to shift attention to "the same month last year", t
 ## Backshift notation
 
 The backward shift operator is convenient for describing the process of *differencing*. \pause
-A first difference can be written as
+
+* A first difference can be written as
 $$
-  y'_{t} = y_{t} - y_{t-1} = y_t - By_{t} = (1 - B)y_{t}
-$$\pause
-Note that a first difference is represented by $(1 - B)$.\pause
-
-Similarly, if second-order differences (i.e., first differences of first differences) have to be computed, then:
-\[
-  y''_{t} = y_{t} - 2y_{t - 1} + y_{t - 2} = (1 - B)^{2} y_{t}
-\]
-
-## Backshift notation
-
-* Second-order difference is denoted $(1- B)^{2}$.
-* *Second-order difference* is not the same as a *second difference*, which would be denoted $1- B^{2}$;
-* In general, a $d$th-order difference can be written as
+  y_{t} - y_{t-1} = y_t - By_{t} = (1 - B)y_{t}
 $$
-  (1 - B)^{d} y_{t}
-$$
-* A seasonal difference followed by a first difference can be written as
-$$
-  (1-B)(1-B^m)y_t
-$$
-
-## Backshift notation
-
-The "backshift" notation is convenient because the terms can be multiplied together to see the combined effect.
-\begin{align*}
-  (1-B)(1-B^m)y_t & = (1 - B - B^m + B^{m+1})y_t \\
-                  & = y_t-y_{t-1}-y_{t-m}+y_{t-m-1}.
-\end{align*}\pause
-For monthly data, $m=12$ and we obtain the same result as earlier.
-
+* A second-order difference is denoted $(1- B)^{2}$.
+* In general, a $d$th-order difference can be written as $(1 - B)^{d} y_{t}$
+* A seasonal difference followed by a first difference can be written as $(1-B)(1-B^m)y_t$.
 
 ## Autoregressive models
 
