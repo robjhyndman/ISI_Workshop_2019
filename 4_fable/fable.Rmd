@@ -791,178 +791,260 @@ For the Australian tourism data (from `tourism`):
  * Produce forecasts of your fitted models.
  * Check the forecasts for the "Snowy Mountains" and "Melbourne" regions. Do they look reasonable?
 
+# Forecast accuracy measures
+
+## Training and test sets
+
+```{r traintest, fig.height=1, echo=FALSE, cache=TRUE}
+train = 1:18
+test = 19:24
+par(mar=c(0,0,0,0))
+plot(0,0,xlim=c(0,26),ylim=c(0,2),xaxt="n",yaxt="n",bty="n",xlab="",ylab="",type="n")
+arrows(0,0.5,25,0.5,0.05)
+points(train, train*0+0.5, pch=19, col="blue")
+points(test,  test*0+0.5,  pch=19, col="red")
+text(26,0.5,"time")
+text(10,1,"Training data",col="blue")
+text(21,1,"Test data",col="red")
 ```
 
-## Cortecosteroid drug sales
-\fontsize{11}{13}\sf
+  * A model which fits the training data well will not necessarily forecast well.
+  * Forecast accuracy is based only on the test set.
 
-```{r h02auto, echo=TRUE, fig.height=3.6}
-fit <- h02 %>% model(auto = ARIMA(log(Cost)))
-report(fit)
-```
+### Forecast errors
 
-## Cortecosteroid drug sales
-\fontsize{10}{12}\sf
+Forecast "error": the difference between an observed value and its forecast.
+$$
+  e_{T+h} = y_{T+h} - \hat{y}_{T+h|T},
+$$
+where the training data is given by $\{y_1,\dots,y_T\}$
 
-```{r, echo=TRUE, fig.height=4, dependson='h02auto'}
-augment(fit) %>%
-  gg_tsdisplay(.resid, lag_max = 36, plot_type = "hist")
-```
+## Measures of forecast accuracy
 
-## Cortecosteroid drug sales
-\fontsize{11}{15}\sf
-
-```{r, echo = TRUE, dependson='h02auto'}
-augment(fit) %>%
-  features(.resid, ljung_box, lag = 36, dof = 5)
-```
-
-## Cortecosteroid drug sales
-\fontsize{9}{9}\sf
-
-```{r h02tryharder, echo=TRUE, fig.height=3.6}
-fit <- h02 %>%
-  model(best = ARIMA(log(Cost), stepwise = FALSE,
-                 approximation = FALSE,
-                 order_constraint = p + q + P + Q <= 9))
-report(fit)
-```
-
-## Cortecosteroid drug sales
-\fontsize{10}{12}\sf
-
-```{r, echo=TRUE, fig.height=4, dependson='h02tryharder'}
-augment(fit) %>%
-  gg_tsdisplay(.resid, lag_max = 36, plot_type = "hist")
-```
-
-## Cortecosteroid drug sales
-\fontsize{11}{15}\sf
-
-```{r, echo = TRUE, dependson='h02tryharder'}
-augment(fit) %>%
-  features(.resid, ljung_box, lag = 36, dof = 9)
-```
-
-## Cortecosteroid drug sales
-\fontsize{10}{12}\sf
-
-Training data: July 1991 to June 2006
-
-Test data: July 2006--June 2008
-
-```r
-fit <- h02 %>%
-  filter_index(~ "2006 Jun") %>%
+```{r beer-fc-1, echo=FALSE, fig.height=4}
+train <- aus_production %>%
+  filter(between(year(Quarter), 1992, 2007))
+beer <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+train %>%
   model(
-    ARIMA(log(Cost) ~ pdq(3, 0, 0) + PDQ(2, 1, 0)),
-    ARIMA(log(Cost) ~ pdq(3, 0, 1) + PDQ(2, 1, 0)),
-    ARIMA(log(Cost) ~ pdq(3, 0, 2) + PDQ(2, 1, 0)),
-    ARIMA(log(Cost) ~ pdq(3, 0, 1) + PDQ(1, 1, 0))
-    # ... #
+    ets = ETS(Beer),
+    arima = ARIMA(Beer)
+  ) %>%
+  forecast(h=11) %>%
+  autoplot(beer, level = NULL) +
+    ggtitle("Forecasts for quarterly beer production") +
+    xlab("Year") + ylab("Megalitres") +
+    guides(colour=guide_legend(title="Forecast"))
+```
+
+## Measures of forecast accuracy
+
+\begin{tabular}{rl}
+$y_{T+h}=$ & $(T+h)$th observation, $h=1,\dots,H$ \\
+$\pred{y}{T+h}{T}=$ & its forecast based on data up to time $T$. \\
+$e_{T+h} =$  & $y_{T+h} - \pred{y}{T+h}{T}$
+\end{tabular}
+
+\begin{align*}
+\text{MAE} &= \text{mean}(|e_{T+h}|) \\[-0.2cm]
+\text{MSE} &= \text{mean}(e_{T+h}^2) \qquad
+&&\text{RMSE} &= \sqrt{\text{mean}(e_{T+h}^2)} \\[-0.1cm]
+\text{MAPE} &= 100\text{mean}(|e_{T+h}|/ |y_{T+h}|)
+\end{align*}\pause
+
+  * MAE, MSE, RMSE are all scale dependent.
+  * MAPE is scale independent but is only sensible if $y_t\gg 0$ for all $t$, and $y$ has a natural zero.
+
+## Measures of forecast accuracy
+
+\fontsize{10}{10}\sf
+
+```{r beer-test-accuracy}
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+train <- recent_production %>% filter(year(Quarter) <= 2007)
+beer_fit <- train %>%
+  model(
+    ets = ETS(Beer),
+    arima = ARIMA(Beer)
   )
-
-fit %>%
-  forecast(h = "2 years") %>%
-  accuracy(h02 %>% filter_index("2006 Jul" ~ .))
+beer_fc <- forecast(beer_fit, h="4 years")
+accuracy(beer_fc, aus_production)
 ```
 
-## Cortecosteroid drug sales
-\fontsize{12}{14}\sf
+## Time series cross-validation {-}
 
-```{r h02-rmse, cache=TRUE}
-models <- list(
-  c(3,0,0,2,1,0),
-  c(3,0,1,2,1,0),
-  c(3,0,2,2,1,0),
-  c(3,0,1,1,1,0),
-  c(3,0,1,0,1,1),
-  c(3,0,1,0,1,2),
-  c(3,0,1,1,1,1),
-  c(3,0,3,0,1,1),
-  c(3,0,2,0,1,1),
-  c(2,1,3,0,1,1),
-  c(2,1,4,0,1,1),
-  c(2,1,5,0,1,1),
-  c(4,1,1,2,1,2))
+**Traditional evaluation**
 
-model_defs <- map(models, ~ ARIMA(log(Cost) ~ 0 + pdq(!!.[1], !!.[2], !!.[3]) + PDQ(!!.[4], !!.[5], !!.[6])))
-model_defs <- set_names(model_defs, map_chr(models,
-  ~ sprintf("ARIMA(%i,%i,%i)(%i,%i,%i)[12]", .[1], .[2], .[3], .[4], .[5], .[6])))
-
-fit <- h02 %>%
-  filter_index(~ "2006 Jun") %>%
-  model(!!!model_defs)
-
-fit %>%
-  forecast(h = "2 years") %>%
-  accuracy(h02 %>% filter_index("2006 Jul" ~ .)) %>%
-  arrange(RMSE) %>%
-  select(.model, RMSE) %>%
-  knitr::kable(digits=4)
+```{r traintest2, fig.height=1, echo=FALSE, cache=TRUE}
+train = 1:18
+test = 19:24
+par(mar=c(0,0,0,0))
+plot(0,0,xlim=c(0,26),ylim=c(0,2),xaxt="n",yaxt="n",bty="n",xlab="",ylab="",type="n")
+arrows(0,0.5,25,0.5,0.05)
+points(train, train*0+0.5, pch=19, col="blue")
+points(test,  test*0+0.5,  pch=19, col="red")
+text(26,0.5,"time")
+text(10,1,"Training data",col="blue")
+text(21,1,"Test data",col="red")
 ```
-
-## Cortecosteroid drug sales
-
-  * Models with lowest AICc values tend to give slightly better results than the other models.
-  * AICc comparisons must have the same orders of differencing. But RMSE test set comparisons can involve any models.
-  * Use the best model available, even if it does not pass all tests.
-
-## Cortecosteroid drug sales
-\fontsize{11}{14}\sf
-
-```{r h02f, echo=TRUE, fig.height=3}
-fit <- h02 %>%
-  model(ARIMA(Cost ~ 0 + pdq(3,0,1) + PDQ(0,1,2)))
-fit %>% forecast %>% autoplot(h02) +
-  ylab("H02 Expenditure ($AUD)") + xlab("Year")
-```
-
-
-# ARIMA vs ETS
-
-## ARIMA vs ETS
-
-  * Myth that ARIMA models are more general than exponential smoothing.
-
-  * Linear exponential smoothing models all special cases of ARIMA models.
-
-  * Non-linear exponential smoothing models have no equivalent ARIMA counterparts.
-
-  * Many ARIMA models have no exponential smoothing counterparts.
-
-  * ETS models all non-stationary. Models with seasonality or non-damped trend (or both) have two unit roots; all other models have one unit \rlap{root.}
 
 \vspace*{10cm}
 
-## Equivalences
+## Time series cross-validation {-}
 
-\fontsize{12}{14}\sf
+**Traditional evaluation**
 
-|**ETS model**  | **ARIMA model**             | **Parameters**                       |
-| :------------ | :-------------------------- | :----------------------------------- |
-| ETS(A,N,N)    | ARIMA(0,1,1)                | $\theta_1 = \alpha-1$                |
-| ETS(A,A,N)    | ARIMA(0,2,2)                | $\theta_1 = \alpha+\beta-2$          |
-|               |                             | $\theta_2 = 1-\alpha$                |
-| ETS(A,A,N)    | ARIMA(1,1,2)                | $\phi_1=\phi$                        |
-|               |                             | $\theta_1 = \alpha+\phi\beta-1-\phi$ |
-|               |                             | $\theta_2 = (1-\alpha)\phi$          |
-| ETS(A,N,A)    | ARIMA(0,0,$m$)(0,1,0)$_m$   |                                      |
-| ETS(A,A,A)    | ARIMA(0,1,$m+1$)(0,1,0)$_m$ |                                      |
-| ETS(A,A,A)    | ARIMA(1,0,$m+1$)(0,1,0)$_m$ |                                      |
+```{r traintest3, fig.height=1, echo=FALSE, cache=TRUE}
+train = 1:18
+test = 19:24
+par(mar=c(0,0,0,0))
+plot(0,0,xlim=c(0,26),ylim=c(0,2),xaxt="n",yaxt="n",bty="n",xlab="",ylab="",type="n")
+arrows(0,0.5,25,0.5,0.05)
+points(train, train*0+0.5, pch=19, col="blue")
+points(test,  test*0+0.5,  pch=19, col="red")
+text(26,0.5,"time")
+text(10,1,"Training data",col="blue")
+text(21,1,"Test data",col="red")
+```
 
-# Lab Session 10
-## Lab Session 10
+**Time series cross-validation**
+
+```{r cv1, cache=TRUE, echo=FALSE, fig.height=4}
+par(mar=c(0,0,0,0))
+plot(0,0,xlim=c(0,28),ylim=c(0,1),
+       xaxt="n",yaxt="n",bty="n",xlab="",ylab="",type="n")
+i <- 1
+for(j in 1:10)
+{
+  test <- (16+j):26
+  train <- 1:(15+j)
+  arrows(0,1-j/20,27,1-j/20,0.05)
+  points(train,rep(1-j/20,length(train)),pch=19,col="blue")
+  if(length(test) >= i)
+    points(test[i], 1-j/20, pch=19, col="red")
+  if(length(test) >= i)
+    points(test[-i], rep(1-j/20,length(test)-1), pch=19, col="gray")
+  else
+    points(test, rep(1-j/20,length(test)), pch=19, col="gray")
+}
+text(28,.95,"time")
+```
+
+\pause
+
+ * Forecast accuracy averaged over test sets.
+ * Also known as "evaluation on a rolling forecasting origin"
+
+ \vspace*{10cm}
+
+## Creating the rolling training sets {-}
+
+\fontsize{13}{14}\sf
+
+There are three main rolling types which can be used.
+
+* Stretch: extends a growing length window with new data.
+* Slide: shifts a fixed length window through the data.
+* Tile: moves a fixed length window without overlap.
+
+Three functions to roll a tsibble: `stretch_tsibble()`, `slide_tsibble()`,
+and `tile_tsibble()`.
+
+For time series cross-validation, stretching windows are most commonly used.
+
+## Creating the rolling training sets {-}
+
+```{r animate, echo = FALSE, warning = FALSE, message = FALSE, fig.show='animate', interval=1/10, fig.height=4, fig.width=8, aniopts='controls,buttonsize=0.3cm,width=11.5cm'}
+library(tidyverse)
+library(gganimate)
+tourism_melb <- tourism %>%
+  filter(Region == "Melbourne", Purpose == "Holiday")
+types <- forcats::fct_inorder(c("Slide", "Tile", "Stretch"))
+slide_window <- slider(tourism_melb$Quarter, .size = 4) %>%
+  map_dfr(function(x) tibble(xmin = min(x), xmax = max(x))) %>%
+  mutate(ymin = -Inf, ymax = Inf, group = row_number(), type = types[1])
+
+tile_window <- tiler(tourism_melb$Quarter, .size = 4) %>%
+  map_dfr(function(x) tibble(xmin = min(x), xmax = max(x))) %>%
+  mutate(ymin = -Inf, ymax = Inf, type = types[2])
+tile_window <- tile_window[c(rep(1:20, each = 4)), ] %>%
+  mutate(group = row_number())
+
+stretch_window <- stretcher(tourism_melb$Quarter, .init = 4) %>%
+  map_dfr(function(x) tibble(xmin = min(x), xmax = max(x))) %>%
+  mutate(ymin = -Inf, ymax = Inf, group = row_number(), type = types[3])
+
+window <- bind_rows(slide_window, tile_window, stretch_window)
+
+ggplot() +
+  geom_line(aes(x = Quarter, y = Trips), data = tourism_melb, colour = "grey", size = 1.2) +
+  geom_rect(aes(
+    xmin = xmin, xmax = xmax,
+    ymin = ymin, ymax = ymax,
+    group = group
+  ), data = window,
+  fill = "#9ecae1", colour = "#9ecae1", size = 1.5, alpha = 0.6) +
+  xlab("Quarter") +
+  ylab("Trips") +
+  facet_wrap(~ type, ncol = 1) +
+  theme_bw() +
+  transition_manual(group)
+```
 
 
-\fontsize{13}{13}\sf
+## Time series cross-validation {-}
 
-For the `fma::condmilk` series:
+\fontsize{12}{13}\sf
 
-  * Do the data need transforming? If so, find a suitable transformation.
-  * Are the data stationary? If not, find an appropriate differencing which yields stationary data.
-  * Identify a couple of ARIMA models that might be useful in describing the time series.
-  * Which of your models is the best according to their AIC values?
-  * Estimate the parameters of your best model and do diagnostic testing on the residuals. Do the residuals resemble white noise? If not, try to find another ARIMA model which fits better.
-  * Forecast the next 24 months of data using your preferred model.
-  * Compare the forecasts obtained using `ets()`.
+Stretch with a minimum length of 3, growing by 1 each step.
+
+```{r beer-stretch, cache=TRUE}
+beer_stretch <- aus_production %>%
+  stretch_tsibble(.init=1, .step=1)
+```
+
+\fontsize{10}{11}\sf
+```{r beer_stretch_print, echo = FALSE}
+print(beer_stretch)
+```
+
+## Time series cross-validation {-}
+\fontsize{12}{13}\sf
+
+```{r beer_fit, cache = TRUE}
+fit_cv <- beer_stretch %>% 
+  model(arima=ARIMA(Beer), ets=ETS(Beer))
+```
+
+\fontsize{10}{11}\sf
+```{r beer_fit-print, echo = FALSE, dependson='beer_fit'}
+print(fit_cv, n = 30)
+```
+
+## Time series cross-validation {-}
+
+\small
+
+Produce one step ahead forecasts from all models.
+
+```{r beer_fc, cache = TRUE, dependson='beer_fit'}
+fc_cv <- fit_cv %>% filter(.id>8) %>% forecast(h=1)
+```
+
+\fontsize{10}{11}\sf
+```{r beer_fc-print, echo = FALSE, dependson='beer_fc'}
+fc_cv 
+```
+
+## Time series cross-validation {-}
+
+\small
+
+```{r beer_accuracy, cache = TRUE, dependson='beer_fc'}
+fc_cv %>% accuracy(aus_production)
+```
+
+A good way to choose the best forecasting model is to find the model with the smallest RMSE computed using time series cross-validation.
+
