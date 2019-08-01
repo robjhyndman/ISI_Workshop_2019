@@ -17,7 +17,7 @@ knitr::opts_chunk$set(
   echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE,
   dev.args = list(pointsize = 11)
 )
-options(digits = 3, width = 69)
+options(digits = 3, width = 66)
 library(tidyverse)
 library(fpp3)
 usmelec <- as_tsibble(fpp2::usmelec) %>%
@@ -673,9 +673,9 @@ Step 2:
 
 \pause\alert{Repeat Step 2 until no lower AICc can be found.}
 
-# Lab Session 9
+# Lab Session 8
 
-## Lab Session 9
+## Lab Session 8
 
 For the United States GDP data (from `global_economy`):
 
@@ -723,21 +723,6 @@ usmelec %>% autoplot(
 ## Example: US electricity production
 \fontsize{11}{13}\sf
 
-```{r usmelec0, echo=TRUE, fig.height=3.5}
-usmelec %>% autoplot(Generation)
-```
-
-## Example: US electricity production
-\fontsize{11}{13}\sf
-
-```{r usmelec1, echo=TRUE, fig.height=3.5}
-usmelec %>% autoplot(log(Generation))
-```
-
-
-## Example: US electricity production
-\fontsize{11}{13}\sf
-
 ```{r usmelec2, echo=TRUE}
 usmelec %>%
   model(arima = ARIMA(log(Generation))) %>%
@@ -772,16 +757,15 @@ usmelec %>%
 |       | Non-seasonal part         | Seasonal part of             |
 |       | of the model              | of the model                 |
 
-where $m =$ number of observations per year.
+\vspace*{-0.4cm}
 
- * $d$ first differences
- * $D$ seasonal differences
- * $p$ AR lags
- * $q$ MA lags
- * $P$ seasonal AR lags
- * $Q$ seasonal MA lags
+  * $m =$ number of observations per year.
+  * $d$ first differences, $D$ seasonal differences
+  * $p$ AR lags, $q$ MA lags
+  * $P$ seasonal AR lags, $Q$ seasonal MA lags
 
-Note: seasonal and non-seasonal terms combine multiplicatively
+###
+Seasonal and non-seasonal terms combine multiplicatively
 
 ## Common ARIMA models
 
@@ -798,79 +782,66 @@ ARIMA(2,1,2)(0,1,1)$_m$& with no transformation\\
 \end{tabular}
 
 ## Cortecosteroid drug sales
+\fontsize{11}{12}\sf
 
-```{r h02}
-h02 %>%
-  mutate(log(Cost)) %>%
-  gather() %>%
-  ggplot(aes(x = Month, y = value)) +
-  geom_line() +
-  facet_grid(key ~ ., scales = "free_y") +
+```{r h02, fig.height=3.3}
+h02 <- PBS %>% filter(ATC2 == "H02") %>%
+  summarise(Cost = sum(Cost))
+h02 %>% autoplot(Cost) +
   xlab("Year") + ylab("") +
-  ggtitle("Cortecosteroid drug scripts (H02)")
+  ggtitle("Cortecosteroid drug scripts")
 ```
 
 ## Cortecosteroid drug sales
-```{r h02b}
-h02 %>% gg_tsdisplay(difference(log(Cost),12), lag_max = 36)
+\fontsize{11}{12}\sf
+
+```{r h02a, fig.height=3.3}
+h02 <- PBS %>% filter(ATC2 == "H02") %>%
+  summarise(Cost = sum(Cost))
+h02 %>% autoplot(log(Cost)) +
+  xlab("Year") + ylab("") +
+  ggtitle("Log Cortecosteroid drug scripts")
 ```
 
 ## Cortecosteroid drug sales
+\fontsize{9}{9}\sf
 
-  * Choose $D=1$ and $d=0$.
-  * Spikes in PACF at lags 12 and 24 suggest seasonal AR(2) term.
-  * Spikes in PACF suggests possible non-seasonal AR(3) term.
-  * Initial candidate model: ARIMA(3,0,0)(2,1,0)$_{12}$.
-
-## Cortecosteroid drug sales
-
-```{r h02aicc, echo=FALSE}
-models <- list(
-  c(3,0,0,2,1,0),
-  c(3,0,1,2,1,0),
-  c(3,0,2,2,1,0),
-  c(3,0,1,1,1,0),
-  c(3,0,1,0,1,1),
-  c(3,0,1,0,1,2),
-  c(3,0,1,1,1,1)
-)
-model_defs <- map(models, ~ ARIMA(log(Cost) ~ 0 + pdq(!!.[1], !!.[2], !!.[3]) + PDQ(!!.[4], !!.[5], !!.[6])))
-model_defs <- set_names(model_defs, map_chr(models,
-  ~ sprintf("ARIMA(%i,%i,%i)(%i,%i,%i)[12]", .[1], .[2], .[3], .[4], .[5], .[6])))
-
+```{r h02auto, echo=TRUE, fig.height=3.6}
 fit <- h02 %>%
-  model(!!!model_defs)
-
-fit %>%
-  glance %>%
-  arrange(AICc) %>%
-  select(.model, AICc) %>%
-  knitr::kable(digits=2, row.names=FALSE, align='cc', booktabs=TRUE)
+  model(auto = ARIMA(log(Cost)))
+report(fit)
 ```
 
-## Cortecosteroid drug sales
-\fontsize{10}{12}\sf
+\vspace*{5cm}
 
-```{r arimah02, echo=TRUE}
+## Cortecosteroid drug sales
+\fontsize{9}{9}\sf
+
+```{r h02tryharder, echo=TRUE, fig.height=3.6}
 fit <- h02 %>%
-  model(best = ARIMA(log(Cost) ~ 0 + pdq(3,0,1) + PDQ(0,1,2)))
+  model(best = ARIMA(log(Cost), stepwise = FALSE,
+                 approximation = FALSE,
+                 order_constraint = p + q + P + Q <= 9))
 report(fit)
 ```
 
 ## Cortecosteroid drug sales
-\fontsize{10}{12}\sf
+\fontsize{11}{14}\sf
 
-```{r h02res, echo=TRUE, fig.height=4, dependson='arimah02'}
-augment(fit) %>%
-  gg_tsdisplay(.resid, lag_max=36, plot_type = "hist")
+```{r h02f, echo=TRUE, fig.height=3}
+fit %>% forecast %>% autoplot(h02) +
+  ylab("H02 Expenditure ($AUD)") + xlab("Year")
 ```
 
-## Cortecosteroid drug sales
-\fontsize{11}{15}\sf
+# Lab Session 9
+## Lab Session 9
 
-```{r h02resb, echo = TRUE, fig.height=4, dependson='arimah02'}
-augment(fit) %>%
-  features(.resid, ljung_box, lag = 36, dof = 6)
+For the Australian tourism data (from `tourism`):
+
+ * Fit a suitable ARIMA model for all data.
+ * Produce forecasts of your fitted models.
+ * Check the forecasts for the "Snowy Mountains" and "Melbourne" regions. Do they look reasonable?
+
 ```
 
 ## Cortecosteroid drug sales
