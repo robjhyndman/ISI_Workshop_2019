@@ -529,52 +529,6 @@ MA:& $q =$ order of the moving average part.
 * AR($p$): ARIMA($p$,0,0)
 * MA($q$): ARIMA(0,0,$q$)
 
-## Annual lynx trappings
-\fontsize{11}{12}\sf
-
-```{r pelt}
-pelt %>% autoplot(Lynx) +
-  xlab("Year") + ylab("Number trapped") +
-  ggtitle("Annual Canadian Lynx Trappings")
-```
-
-## Annual lynx trappings
-\fontsize{11}{12}\sf
-
-```{r peltsqrt}
-pelt %>% autoplot(sqrt(Lynx)) +
-  xlab("Year") + ylab("Number trapped") +
-  ggtitle("Annual Canadian Lynx Trappings")
-```
-
-## Annual lynx trappings
-\fontsize{11}{13}\sf
-
-```{r pelt1}
-pelt %>%
-  model(lynx = ARIMA(sqrt(Lynx))) %>%
-  report()
-```
-
-\only<2>{\begin{textblock}{6.7}(5.85,4.6)
-\begin{alertblock}{}\fontsize{11}{12}\sf
-$y_t = \sqrt{(\text{lynx in year $t$})}$
-\centerline{$y_t = 56.3 + 1.5y_{t-1} - 0.9y_{t-2} - 0.3 \varepsilon_{t-1} + \varepsilon_t$}
-\mbox{}\hfill$\varepsilon_t \sim \text{NID}(0,508)$
-\end{alertblock}
-\end{textblock}}
-\vspace*{3cm}
-
-## Annual lynx trappings
-\fontsize{11}{12}\sf
-
-```{r pelt2}
-pelt %>%
-  model(lynx = ARIMA(sqrt(Lynx))) %>%
-  forecast(h=20) %>%
-  autoplot(pelt)
-```
-
 ## Example: National populations
 \fontsize{11}{12}\sf
 
