@@ -395,15 +395,10 @@ Optimize parameters and initial values using MLE.
 
 ## Lab Session 7
 
-1. Find an ETS model for the Gas data from `aus_production`.
+Find an ETS model for the Gas data from `aus_production`.
 
-    * Why is multiplicative seasonality necessary here?
-    * Experiment with making the trend damped.
-
-2. Use `ETS()` on some of these series: `tourism`, `gafa_stock`, `pelt`.
-
-    * Does it always give good forecasts?
-    * Find an example where it does not work well. Can you figure out why?
+  * Why is multiplicative seasonality necessary here?
+  * Experiment with making the trend damped.
 
 # ARIMA models
 
