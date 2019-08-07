@@ -36,40 +36,62 @@ endpdf <- function()
 }
 ```
 
-# Forecast reconciliation
+# Hierarchical and grouped time series
 
-## Australian tourism
-\full{regions1_with_labels}
+## Australian Pharmaceutical Benefits Scheme
 
-## Australian tourism
+\full{pills}
 
-\begin{textblock}{10}(1,1.5)\small
-\begin{block}{}
-  \begin{itemize}\itemsep=0cm\parskip=0cm
-    \item Quarterly data on visitor night from 1998:Q1 -- 2013:Q4
-    \item From: \textit{National Visitor Survey}, based on annual interviews of 120,000 Australians aged 15+, collected by Tourism Research Australia.
-    \item Split by 7 states, 27 zones and 76 regions (a geographical hierarchy)
-    \item Also split by purpose of travel
-      \begin{itemize}
-        \item Holiday
-        \item Visiting friends and relatives (VFR)
-        \item Business
-        \item Other
-      \end{itemize}
-    \item 304 bottom-level series
-  \end{itemize}
-\end{block}
-\end{textblock}
+## PBS sales
+\fontsize{9}{10}\sf
 
-## Spectacle sales
+```{r setwidth, include=FALSE}
+fred <- options(width=71)
+```
 
-\placefig{1}{1.4}{width=9.5cm}{spectacles.jpg}
-\vspace*{4.8cm}
+```{r pbs, dependson='setwidth'}
+PBS
+```
 
- * Monthly UK sales data from 2000 -- 2014
- * Provided by a large spectacle manufacturer
- * Split by brand (26), gender (3), price range (6), materials (4), and stores (600)
- * About 1 million bottom-level series
+```{r setwidthback, include=FALSE}
+options(width=fred$width)
+```
+
+## ATC drug classification
+\fontsize{12}{13}\sf
+
+\hspace*{-0.5cm}\begin{tabular}{lp{10.7cm}}
+A &Alimentary tract and metabolism\\
+B &Blood and blood forming organs\\
+C &Cardiovascular system\\
+D &Dermatologicals\\
+G &Genito-urinary system and sex hormones\\
+H &Systemic hormonal preparations, excluding sex hormones and insulins\\
+J &Anti-infectives for systemic use\\
+L &Antineoplastic and immunomodulating agents\\
+M &Musculo-skeletal system\\
+N &Nervous system\\
+P &Antiparasitic products, insecticides and repellents\\
+R &Respiratory system\\
+S &Sensory organs\\
+V &Various
+\end{tabular}
+
+## ATC drug classification
+\hspace*{-1.5cm}\begin{minipage}{9.6cm}
+\begin{tikzpicture}
+\tikzstyle{every node}=[ellipse,font=\small,draw,fill=red!15]
+\tikzstyle[level font=\small,set style={{every node}+=[fill=blue!15]}]
+\tikzstyle{level 1}=[font=\small,set style={{every node}+=[fill=blue!15]}]
+\tikzstyle{level 2}=[font=\small,set style={{every node}+=[fill=yellow]}]
+\node[label=right:\hspace*{-0.cm}Alimentary tract and metabolism,label=left:\textbf{ATC1: 14 classes}\hspace*{0.3cm}]{A}[edge from parent fork down]
+   child {node[label=right:\hspace*{-0.0cm}Drugs used in diabetes,label=left:\textbf{ATC2: 84 classes}]{A10}
+     child {node[label=right:\hspace*{-0.35cm}Blood glucose lowering drugs]{A10B}
+       child {node[label=right:\hspace*{0.1cm}Biguanides]{A10BA}
+         child {node[label=right:\hspace*{-0.15cm}Metformin]{A10BA02}
+ }}}};
+ \end{tikzpicture}
+\end{minipage}
 
 ## Hierarchical time series
 \fontsize{13}{14}\sf
@@ -106,7 +128,38 @@ A \alert{\textbf{hierarchical time series}} is a collection of several time seri
 
 \pause\alert{Examples}\vspace*{-0.2cm}
 
- * Tourism demand by state and region
+ * PBS sales by ATC groups
+ * Tourism demand by states, zones, regions
+
+## Australian tourism
+\full{regions1_with_labels}
+
+## Australian tourism
+\fontsize{11}{12}\sf
+
+```{r tourism}
+tourism
+```
+
+## Australian tourism
+
+\begin{textblock}{10}(1,1.5)\small
+\begin{block}{}
+  \begin{itemize}\itemsep=0cm\parskip=0cm
+    \item Quarterly data on visitor night from 1998:Q1 -- 2013:Q4
+    \item From: \textit{National Visitor Survey}, based on annual interviews of 120,000 Australians aged 15+, collected by Tourism Research Australia.
+    \item Split by 7 states, 27 zones and 76 regions (a geographical hierarchy)
+    \item Also split by purpose of travel
+      \begin{itemize}
+        \item Holiday
+        \item Visiting friends and relatives (VFR)
+        \item Business
+        \item Other
+      \end{itemize}
+    \item 304 bottom-level series
+  \end{itemize}
+\end{block}
+\end{textblock}
 
 ## Grouped time series
 \fontsize{13}{14}\sf
@@ -148,8 +201,43 @@ A \alert{\textbf{grouped time series}} is a collection of time series that can b
 
 \pause\alert{Examples}
 
- * Spectacle sales by brand, gender, stores, etc.
  * Tourism by state and purpose of travel
+ * Retail sales by product groups/sub groups, and by countries/regions
+
+## Creating aggregates
+\fontsize{7}{7}\sf
+
+```{r pbs_aggregate}
+PBS %>%
+  aggregate_key(ATC1/ATC2, Scripts = sum(Scripts)) %>%
+  filter(Month == yearmonth("1991 Jul")) %>% print(n=18)
+```
+
+## Creating aggregates
+\fontsize{8}{8}\sf
+
+```{r tourism_aggregate}
+tourism %>%
+  aggregate_key(Purpose * (State / Region), Trips = sum(Trips)) %>%
+  filter(Quarter == yearquarter("1998 Q1")) %>% print(n=15)
+```
+
+## Creating aggregates
+\fontsize{13}{15}\sf
+
+ * Similar to `summarise()` but using the key structure
+ * A grouped structure is specified using `grp1 * grp2`
+ * A nested structure is specified via `parent / child`.
+ * Groups and nesting can be mixed:
+
+    ```r
+    (country/region/city) * (brand/product)
+    ```
+
+ * All possible aggregates are produced.
+ * These are useful when forecasting at different levels of aggregation.
+
+# Forecast reconciliation
 
 ## The problem
 \fontsize{13}{14}\sf
@@ -166,6 +254,17 @@ A \alert{\textbf{grouped time series}} is a collection of time series that can b
 1. Forecast all series at all levels of aggregation using an automatic forecasting algorithm.\newline (e.g., `ETS`, `ARIMA`, ...)
 2. Reconcile the resulting forecasts so they add up correctly using least squares optimization (i.e., find closest reconciled forecasts to the original forecasts).
 3. This is available using `reconcile()`.
+
+## Forecast reconciliation
+\fontsize{10}{11}\sf
+
+```{r tourismets_reconciled, message=FALSE}
+tourism %>%
+  aggregate_key(Purpose*(State/Region), Trips=sum(Trips)) %>%
+  model(ets = ETS(Trips)) %>%
+  reconcile(ets_adjusted = min_trace(ets)) %>%
+  forecast(h = 2)
+```
 
 ## Hierarchical and grouped time series
 
@@ -204,10 +303,10 @@ where
 
 \only<2->{\begin{textblock}{6.3}(6,1)\small
 \begin{itemize}\itemsep=0cm\parskip=0cm
-\item[\color{white} $ y_{t}: $] observed aggregate of all series at time
+\item[$ y_{t}: $] observed aggregate of all series at time
 $t$.
-\item[\color{white} $ y_{X,t}: $] observation on series $X$ at time $t$.
-\item[\color{white} $ \bm{b}_{t}: $] vector of all series at bottom level
+\item[$ y_{X,t}: $] observation on series $X$ at time $t$.
+\item[$ \bm{b}_{t}: $] vector of all series at bottom level
 in time $t$.
 \end{itemize}
 \end{textblock}}\vspace*{0.6cm}
@@ -222,17 +321,17 @@ $\bY_{t}= \begin{pmatrix}
                 1 & 0 & 0 \\
                 0 & 1 & 0\\
                 0 & 0 & 1
-                \end{pmatrix}}\only<4->{{\color{orange}\underbrace{\begin{pmatrix}
+                \end{pmatrix}}\only<4->{{\color{blue}\underbrace{\begin{pmatrix}
                 1 & 1 & 1 \\
                 1 & 0 & 0 \\
                 0 & 1 & 0\\
                 0 & 0 & 1
                 \end{pmatrix}}_{\bS}}}\only<3>{\hspace*{0.08cm}}\only<3>{\hspace*{-0.1cm}\begin{pmatrix}Y_{A,t}\\y_{B,t}\\y_{C,t}\end{pmatrix}}\rule{0cm}{1.6cm}
-                \only<4->{\hspace*{0.08cm}{\color{DarkYellow}\underbrace{\begin{pmatrix}y_{A,t}\\y_{B,t}\\y_{C,t}\end{pmatrix}}_{\bm{b}_{t}}}}$}
+                \only<4->{\hspace*{0.08cm}{\color{red}\underbrace{\begin{pmatrix}y_{A,t}\\y_{B,t}\\y_{C,t}\end{pmatrix}}_{\bm{b}_{t}}}}$}
 
 \vspace*{-0.6cm}
 
-\only<4>{\hspace*{8cm}\colorbox[RGB]{0,61,102}{$\bY_{t}=\color{orange}\bS\color{DarkYellow}\bm{b}_{t}$}}
+\only<4>{\hspace*{8cm}\colorbox[RGB]{210,210,210}{$\bY_{t}=\color{blue}\bS\color{red}\bm{b}_{t}$}}
 
 \vspace*{10cm}
 
@@ -250,28 +349,28 @@ for some matrix $\bm{G}$.
  * $\bS$ adds them up
 
 ## Optimal combination forecasts
-\fontsize{14}{15}\sf
+\fontsize{13}{14}\sf
 
 \begin{alertblock}{Main result}
 The best (minimum sum of variances) unbiased forecasts are obtained when
-$\bm{G} = (\bS'\bSigma^{-1}_{h}\bS)^{-1}\bS'\bSigma^{-1}_{h}$,
-where $\bSigma_h$ is the $h$-step base forecast error covariance matrix.
+$\bm{G} = (\bS'\bW^{-1}_{h}\bS)^{-1}\bS'\bW^{-1}_{h}$,
+where $\bW_h$ is the $h$-step base forecast error covariance matrix.
 \end{alertblock}
 
 \pause
 
 \begin{block}{}
 \centerline{$\displaystyle\textcolor{red}{\tilde{\by}_{n}(h)}
-=\bS(\bS'\bSigma^{-1}_{h}\bS)^{-1}\bS'\bSigma^{-1}_{h}\textcolor{blue}{\hat{\by}_{n}(h)}$}
+=\bS(\bS'\bW^{-1}_{h}\bS)^{-1}\bS'\bW^{-1}_{h}\textcolor{blue}{\hat{\by}_{n}(h)}$}
 \end{block}\fontsize{14}{15}\sf
 
-\alert{\textbf{Problem:}} $\bSigma_h$ hard to estimate, especially for $h>1$.
+\alert{\textbf{Problem:}} $\bW_h$ hard to estimate, especially for $h>1$.
 
 \alert{Solutions:}\vspace*{-0.4cm}
 
- * Ignore $\bSigma_h$ (OLS)
- * Assume $\bSigma_h$ diagonal (WLS) [Default in `hts`]
- * Try to estimate $\bSigma_h$ (GLS)
+ * Ignore $\bW_h$ (OLS) [`min_trace(method='ols')`]
+ * Assume $\bW_h = k_h\bW_1$ is diagonal (WLS) [`min_trace(method='wls')`]
+ * Assume $\bW_h = k_h\bW_1$ and estimate it (GLS) [`min_trace(method='shrink')` (the default)]
 
 ## Features
 \fontsize{15}{17}\sf
