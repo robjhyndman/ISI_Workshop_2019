@@ -437,6 +437,7 @@ fc %>%
 ```
 
 ## Forecast evaluation
+\fontsize{10}{11}\sf
 
 ```{r fcaccuracy, dependson='fctourism'}
 fc %>% accuracy(tourism_agg)
@@ -451,25 +452,47 @@ fc %>% accuracy(tourism_agg) %>%
 ```
 
 ## Forecast evaluation
+\fontsize{10}{11}\sf
 
 ```{r fceval1}
-tourism_stretch <- tourism %>%
-  aggregate_key(Purpose * (State / Region),
-                Trips = sum(Trips)) %>%
+tourism_state <- tourism %>%
+  group_by(State, Purpose) %>%
+  summarise(Trips = sum(Trips)) %>%
+  aggregate_key(State * Purpose,
+                Trips = sum(Trips))
+tourism_state
+```
+
+## Forecast evaluation
+\fontsize{10}{11}\sf
+
+```{r fceval1a}
+tourism_stretch <- tourism_state %>%
   stretch_tsibble(.init = 16)
 tourism_stretch
 ```
 
 ## Forecast evaluation
+\fontsize{9}{10}\sf
 
-```{r fceval2}
+
+```{r setwidth2, include=FALSE}
+fred <- options(width=72)
+```
+
+```{r fceval2, dependson='setwidth'}
 fits <- tourism_stretch %>%
   model(ets = ETS(Trips)) %>%
-  reconcile(ets_adjusted = min_trace(ets))
+  reconcile(ets_adjusted = min_trace(ets, method='wls'))
 fits
 ```
 
+```{r setwidthback2, include=FALSE}
+options(width=fred$width)
+```
+
 ## Forecast evaluation
+\fontsize{10}{11}\sf
 
 ```{r fceval3}
 fc <- fits %>% forecast(h = 1)
@@ -477,15 +500,17 @@ fc
 ```
 
 ## Forecast evaluation
+\fontsize{10}{11}\sf
 
-```{r fceval4}
-fc %>% accuracy(tourism)
+```{r fceval4, message=FALSE}
+fc %>% accuracy(tourism_state)
 ```
 
 ## Forecast evaluation
+\fontsize{10}{11}\sf
 
-```{r fceval5}
-fc %>% accuracy(tourism) %>%
+```{r fceval5, message=FALSE}
+fc %>% accuracy(tourism_state) %>%
   group_by(.model) %>%
   summarise(MASE = mean(MASE))
 ```
