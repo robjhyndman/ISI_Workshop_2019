@@ -455,39 +455,45 @@ fc %>% accuracy(tourism_agg) %>%
 \fontsize{10}{11}\sf
 
 ```{r fceval1}
-tourism_state <- tourism %>%
-  group_by(State, Purpose) %>%
+tourism_region <- tourism %>%
+  group_by(State, Region) %>%
   summarise(Trips = sum(Trips)) %>%
-  aggregate_key(State * Purpose,
+  aggregate_key(State / Region,
                 Trips = sum(Trips))
-tourism_state
+tourism_region
 ```
 
 ## Forecast evaluation
 \fontsize{10}{11}\sf
 
 ```{r fceval1a}
-tourism_stretch <- tourism_state %>%
+tourism_stretch <- tourism_region %>%
   stretch_tsibble(.init = 16)
 tourism_stretch
 ```
 
 ## Forecast evaluation
-\fontsize{9}{10}\sf
+\fontsize{7}{8}\sf
 
 
 ```{r setwidth2, include=FALSE}
-fred <- options(width=72)
+fred <- options(width=85)
 ```
 
-```{r fceval2, dependson='setwidth'}
+```{r fceval2, dependson='setwidth2'}
 fits <- tourism_stretch %>%
-  model(ets = ETS(Trips)) %>%
-  reconcile(ets_adjusted = min_trace(ets, method='wls'))
+  model(
+    ets = ETS(Trips),
+    arima = ARIMA(Trips)
+  ) %>%
+  reconcile(
+    ets_adj = min_trace(ets, method='wls'),
+    arima_adj = min_trace(arima, method='wls')
+  )
 fits
 ```
 
-```{r setwidthback2, include=FALSE}
+```{r setwidthback2, include=FALSE, dependson='setwidth2'}
 options(width=fred$width)
 ```
 
@@ -503,14 +509,14 @@ fc
 \fontsize{10}{11}\sf
 
 ```{r fceval4, message=FALSE}
-fc %>% accuracy(tourism_state)
+fc %>% accuracy(tourism_region)
 ```
 
 ## Forecast evaluation
 \fontsize{10}{11}\sf
 
 ```{r fceval5, message=FALSE}
-fc %>% accuracy(tourism_state) %>%
+fc %>% accuracy(tourism_region) %>%
   group_by(.model) %>%
   summarise(MASE = mean(MASE))
 ```
