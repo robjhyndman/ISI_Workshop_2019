@@ -494,6 +494,10 @@ fc %>% accuracy(tourism) %>%
 
 ## Lab Session 10
 
-1. Repeat the time series cross-validation for the tourism data but use ARIMA models instead of ETS models. Which is better?
+* Create a new tsibble for PBS data using only ATC1 groups (combining over ATC2 groups).
+* Use forecast reconciliation with this data, using both ETS and SNAIVE models.
+* Which type of model works best?
+* Does the reconciliation improve the forecast accuracy?
+* Why doesn't reconciliation make any difference to SNAIVE forecasts?
 
-2. Use forecast reconciliation with the PBS data, using both ETS and ARIMA models. Which type of model works best? Does the reconciliation improve the forecast accuracy?
+
