@@ -471,3 +471,11 @@ tourism_stretch %>%
   group_by(.model) %>%
   summarise(MASE = mean(MASE))
 ```
+
+# Lab Session 10
+
+## Lab Session 10
+
+1. Repeat the time series cross-validation for the tourism data but use ARIMA models instead of ETS models. Which is better?
+
+2. Use forecast reconciliation with the PBS data, using both ETS and ARIMA models. Which type of model works best? Does the reconciliation improve the forecast accuracy?
