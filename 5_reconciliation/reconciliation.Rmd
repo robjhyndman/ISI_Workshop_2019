@@ -372,7 +372,7 @@ where $\bW_h$ is the $h$-step base forecast error covariance matrix.
 
 ```{r fctourism}
 tourism_agg <- tourism %>%
-  aggregate_key(Purpose * (State / Region), 
+  aggregate_key(Purpose * (State / Region),
                 Trips = sum(Trips))
 fc <- tourism_agg %>%
   filter_index(. ~ yearquarter("2015 Q4")) %>%
@@ -385,7 +385,7 @@ fc <- tourism_agg %>%
 \fontsize{10}{11}\sf
 
 ```{r fctourism2, dependson='fctourism'}
-fc %>% 
+fc %>%
   filter(is_aggregated(Purpose) & is_aggregated(State)) %>%
   autoplot(tourism_agg, level=95)
 ```
@@ -394,8 +394,8 @@ fc %>%
 \fontsize{10}{11}\sf
 
 ```{r fctourism3, dependson='fctourism'}
-fc %>% 
-  filter(is_aggregated(Purpose) & State=="Victoria" & 
+fc %>%
+  filter(is_aggregated(Purpose) & State=="Victoria" &
          is_aggregated(Region)) %>%
   autoplot(tourism_agg, level=95)
 ```
@@ -404,7 +404,7 @@ fc %>%
 \fontsize{10}{11}\sf
 
 ```{r fctourism4, dependson='fctourism'}
-fc %>% 
+fc %>%
   filter(is_aggregated(Purpose) & Region=="Melbourne") %>%
   autoplot(tourism_agg, level=95)
 ```
@@ -413,7 +413,7 @@ fc %>%
 \fontsize{10}{11}\sf
 
 ```{r fctourism5, dependson='fctourism'}
-fc %>% 
+fc %>%
   filter(is_aggregated(Purpose) & Region=="Snowy Mountains") %>%
   autoplot(tourism_agg, level=95)
 ```
@@ -422,7 +422,7 @@ fc %>%
 \fontsize{10}{11}\sf
 
 ```{r fctourism6, dependson='fctourism'}
-fc %>% 
+fc %>%
   filter(Purpose=="Holiday" & Region=="Barossa") %>%
   autoplot(tourism_agg, level=95)
 ```
@@ -431,7 +431,7 @@ fc %>%
 \fontsize{10}{11}\sf
 
 ```{r fctourism7, dependson='fctourism'}
-fc %>% 
+fc %>%
   filter(is_aggregated(Purpose) & Region=="MacDonnell") %>%
   autoplot(tourism_agg, level=95)
 ```
@@ -454,20 +454,38 @@ fc %>% accuracy(tourism_agg) %>%
 
 ```{r fceval1}
 tourism_stretch <- tourism %>%
-  aggregate_key(Purpose * (State / Region), 
+  aggregate_key(Purpose * (State / Region),
                 Trips = sum(Trips)) %>%
-  stretch_tsibble()
+  stretch_tsibble(.init = 16)
 tourism_stretch
 ```
 
 ## Forecast evaluation
 
 ```{r fceval2}
-tourism_stretch %>%
+fits <- tourism_stretch %>%
   model(ets = ETS(Trips)) %>%
-  reconcile(ets_adjusted = min_trace(ets)) %>%
-  forecast(h = 1) %>%
-  accuracy(tourism) %>%
+  reconcile(ets_adjusted = min_trace(ets))
+fits
+```
+
+## Forecast evaluation
+
+```{r fceval3}
+fc <- fits %>% forecast(h = 1)
+fc
+```
+
+## Forecast evaluation
+
+```{r fceval4}
+fc %>% accuracy(tourism)
+```
+
+## Forecast evaluation
+
+```{r fceval5}
+fc %>% accuracy(tourism) %>%
   group_by(.model) %>%
   summarise(MASE = mean(MASE))
 ```
