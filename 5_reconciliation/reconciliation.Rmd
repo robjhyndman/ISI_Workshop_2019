@@ -436,99 +436,50 @@ fc %>%
   autoplot(tourism_agg, level=95)
 ```
 
-## Forecast evaluation
-\fontsize{10}{11}\sf
 
-```{r fcaccuracy, dependson='fctourism'}
-fc %>% accuracy(tourism_agg)
-```
+## Example: Australian tourism
+\fontsize{12}{12.5}\sf
 
-## Forecast evaluation
-
-```{r fcaccuracy2, dependson='fctourism'}
-fc %>% accuracy(tourism_agg) %>%
-  group_by(.model) %>%
-  summarise(MASE = mean(MASE))
-```
-
-## Forecast evaluation
-\fontsize{10}{11}\sf
-
-```{r fceval1}
-tourism_region <- tourism %>%
-  group_by(State, Region) %>%
-  summarise(Trips = sum(Trips)) %>%
-  aggregate_key(State / Region,
-                Trips = sum(Trips))
-tourism_region
-```
-
-## Forecast evaluation
-\fontsize{10}{11}\sf
-
-```{r fceval1a}
-tourism_stretch <- tourism_region %>%
-  stretch_tsibble(.init = 16)
-tourism_stretch
-```
-
-## Forecast evaluation
-\fontsize{7}{8}\sf
-
-
-```{r setwidth2, include=FALSE}
-fred <- options(width=85)
-```
-
-```{r fceval2, dependson='setwidth2'}
-fits <- tourism_stretch %>%
+```{r fctourismcomb}
+fc <- tourism_agg %>%
+  filter_index(. ~ yearquarter("2015 Q4")) %>%
   model(
     ets = ETS(Trips),
     arima = ARIMA(Trips)
   ) %>%
+  mutate(
+    comb = (ets+arima)/2
+  ) %>%
   reconcile(
-    ets_adj = min_trace(ets, method='wls'),
-    arima_adj = min_trace(arima, method='wls')
-  )
-fits
-```
-
-```{r setwidthback2, include=FALSE, dependson='setwidth2'}
-options(width=fred$width)
+    ets_adj = min_trace(ets),
+    arima_adj = min_trace(arima),
+    comb_adj = min_trace(comb)
+    ) %>%
+  forecast(h = "2 years")
 ```
 
 ## Forecast evaluation
 \fontsize{10}{11}\sf
 
-```{r fceval3}
-fc <- fits %>% forecast(h = 1)
-fc
+```{r fcaccuracy, dependson='fctourismcomb'}
+fc %>% accuracy(tourism_agg)
 ```
 
 ## Forecast evaluation
-\fontsize{10}{11}\sf
+\fontsize{12}{13}\sf
 
-```{r fceval4, message=FALSE}
-fc %>% accuracy(tourism_region)
-```
-
-## Forecast evaluation
-\fontsize{10}{11}\sf
-
-```{r fceval5, message=FALSE}
-fc %>% accuracy(tourism_region) %>%
+```{r fcaccuracy2, dependson='fctourismcomb'}
+fc %>% accuracy(tourism_agg) %>%
   group_by(.model) %>%
-  summarise(MASE = mean(MASE))
+  summarise(MASE = mean(MASE)) %>%
+  arrange(MASE)
 ```
 
 # Lab Session 10
 
 ## Lab Session 10
 
-* Create a new tsibble for PBS data using only ATC1 groups (combining over ATC2 groups).
-* Use forecast reconciliation with this data, using both ETS and SNAIVE models.
+* Use forecast reconciliation with the PBS data, using ETS, ARIMA and SNAIVE models, applied to all but the last 3 years of data.
 * Which type of model works best?
 * Does the reconciliation improve the forecast accuracy?
-* Why doesn't reconciliation make any difference to SNAIVE forecasts?
-
-
+* Why doesn't the reconcililation make any difference to the SNAIVE forecasts?
