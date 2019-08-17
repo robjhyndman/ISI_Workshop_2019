@@ -75,13 +75,6 @@ library(feasts)
 library(tsibbledata)
 ```
 
-\pause
-
-```r
-# Almost all of the above
-library(fpp3)
-```
-
 ## `tsibble` objects
 
 \fontsize{10}{11.2}\sf
